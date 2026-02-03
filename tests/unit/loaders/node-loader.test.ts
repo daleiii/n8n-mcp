@@ -726,7 +726,13 @@ describe('N8nNodeLoader', () => {
       });
 
       it('should include sourceType field for official nodes', () => {
-        const officialNode = {
+        const officialNode: {
+          packageName: string;
+          nodeName: string;
+          NodeClass: new () => unknown;
+          sourceType: 'official';
+          sourcePath?: string;
+        } = {
           packageName: 'n8n-nodes-base',
           nodeName: 'Slack',
           NodeClass: class {},

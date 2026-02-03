@@ -3,6 +3,11 @@
  *
  * Checks if the current n8n-mcp version is outdated by comparing
  * against the latest version published on npm.
+ *
+ * Fork Support (v2.34.0):
+ * - Detects fork versions (containing '-fork' suffix)
+ * - Checks both fork GitHub releases and upstream npm
+ * - Provides separate update info for fork and upstream
  */
 
 import { logger } from './logger';
@@ -16,6 +21,16 @@ interface NpmRegistryResponse {
   [key: string]: unknown;
 }
 
+/**
+ * GitHub Release Response structure
+ */
+interface GitHubRelease {
+  tag_name: string;
+  name: string;
+  published_at: string;
+  html_url: string;
+}
+
 export interface VersionCheckResult {
   currentVersion: string;
   latestVersion: string | null;
@@ -24,6 +39,14 @@ export interface VersionCheckResult {
   error: string | null;
   checkedAt: Date;
   updateCommand?: string;
+  // Fork-specific fields
+  isFork?: boolean;
+  forkVersion?: string;
+  latestForkVersion?: string | null;
+  forkOutdated?: boolean;
+  upstreamVersion?: string | null;
+  upstreamOutdated?: boolean;
+  forkRepo?: string;
 }
 
 // Cache for version check to avoid excessive npm requests
@@ -31,9 +54,84 @@ let versionCheckCache: VersionCheckResult | null = null;
 let lastCheckTime: number = 0;
 const CACHE_TTL_MS = 1 * 60 * 60 * 1000; // 1 hour cache
 
+// Fork configuration
+const FORK_REPO = 'daleiii/n8n-mcp';
+const FORK_SUFFIX = '-fork';
+
 /**
- * Check if current version is outdated compared to npm registry
- * Uses caching to avoid excessive npm API calls
+ * Detect if the current version is a fork version
+ */
+function isForkVersion(version: string): boolean {
+  return version.includes(FORK_SUFFIX);
+}
+
+/**
+ * Extract the base version from a fork version (e.g., "2.33.5-fork.1" -> "2.33.5")
+ */
+function getBaseVersion(version: string): string {
+  const forkIndex = version.indexOf(FORK_SUFFIX);
+  return forkIndex > 0 ? version.substring(0, forkIndex) : version;
+}
+
+/**
+ * Fetch latest release from a GitHub repository
+ */
+async function fetchGitHubLatestRelease(repo: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'n8n-mcp-version-checker',
+      },
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (!response.ok) {
+      logger.debug(`GitHub release check failed for ${repo}`, { status: response.status });
+      return null;
+    }
+
+    const data = await response.json() as GitHubRelease;
+    // Remove 'v' prefix if present
+    return data.tag_name?.replace(/^v/, '') || null;
+  } catch (error) {
+    logger.debug(`Error fetching GitHub release for ${repo}`, {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return null;
+  }
+}
+
+/**
+ * Fetch latest version from npm registry
+ */
+async function fetchNpmLatestVersion(): Promise<string | null> {
+  try {
+    const response = await fetch('https://registry.npmjs.org/n8n-mcp/latest', {
+      headers: {
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json() as NpmRegistryResponse;
+    return data.version || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Check if current version is outdated compared to npm registry and fork releases
+ * Uses caching to avoid excessive API calls
+ *
+ * For fork versions:
+ * - Checks GitHub releases for the fork repo
+ * - Also checks upstream npm to notify of upstream updates
  *
  * @param forceRefresh - Force a fresh check, bypassing cache
  * @returns Version check result
@@ -43,91 +141,109 @@ export async function checkNpmVersion(forceRefresh: boolean = false): Promise<Ve
 
   // Return cached result if available and not expired
   if (!forceRefresh && versionCheckCache && (now - lastCheckTime) < CACHE_TTL_MS) {
-    logger.debug('Returning cached npm version check result');
+    logger.debug('Returning cached version check result');
     return versionCheckCache;
   }
 
   // Get current version from package.json
   const packageJson = require('../../package.json');
-  const currentVersion = packageJson.version;
+  const currentVersion: string = packageJson.version;
+  const isFork = isForkVersion(currentVersion);
+  const baseVersion = getBaseVersion(currentVersion);
 
   try {
-    // Fetch latest version from npm registry
-    const response = await fetch('https://registry.npmjs.org/n8n-mcp/latest', {
-      headers: {
-        'Accept': 'application/json',
-      },
-      signal: AbortSignal.timeout(5000) // 5 second timeout
-    });
+    if (isFork) {
+      // Fork version: check both fork releases and upstream npm
+      const [forkLatest, upstreamLatest] = await Promise.all([
+        fetchGitHubLatestRelease(FORK_REPO),
+        fetchNpmLatestVersion()
+      ]);
 
-    if (!response.ok) {
-      logger.warn('Failed to fetch npm version info', {
-        status: response.status,
-        statusText: response.statusText
-      });
+      const forkOutdated = forkLatest ? compareVersions(currentVersion, forkLatest) < 0 : false;
+      const upstreamOutdated = upstreamLatest ? compareVersions(baseVersion, upstreamLatest) < 0 : false;
 
       const result: VersionCheckResult = {
         currentVersion,
-        latestVersion: null,
-        isOutdated: false,
-        updateAvailable: false,
-        error: `npm registry returned ${response.status}`,
-        checkedAt: new Date()
+        latestVersion: forkLatest,
+        isOutdated: forkOutdated,
+        updateAvailable: forkOutdated || upstreamOutdated,
+        error: null,
+        checkedAt: new Date(),
+        // Fork-specific fields
+        isFork: true,
+        forkVersion: currentVersion,
+        latestForkVersion: forkLatest,
+        forkOutdated,
+        upstreamVersion: upstreamLatest,
+        upstreamOutdated,
+        forkRepo: FORK_REPO,
+        updateCommand: forkOutdated
+          ? `docker pull ghcr.io/${FORK_REPO}:latest`
+          : upstreamOutdated
+            ? `Upstream update available: ${baseVersion} → ${upstreamLatest}. Consider syncing fork.`
+            : undefined
       };
 
       versionCheckCache = result;
       lastCheckTime = now;
+
+      logger.debug('Fork version check completed', {
+        current: currentVersion,
+        latestFork: forkLatest,
+        latestUpstream: upstreamLatest,
+        forkOutdated,
+        upstreamOutdated
+      });
+
+      return result;
+
+    } else {
+      // Standard version: check npm registry only
+      const latestVersion = await fetchNpmLatestVersion();
+
+      if (!latestVersion) {
+        const result: VersionCheckResult = {
+          currentVersion,
+          latestVersion: null,
+          isOutdated: false,
+          updateAvailable: false,
+          error: 'Failed to fetch version from npm registry',
+          checkedAt: new Date(),
+          isFork: false
+        };
+
+        versionCheckCache = result;
+        lastCheckTime = now;
+        return result;
+      }
+
+      const isOutdated = compareVersions(currentVersion, latestVersion) < 0;
+
+      const result: VersionCheckResult = {
+        currentVersion,
+        latestVersion,
+        isOutdated,
+        updateAvailable: isOutdated,
+        error: null,
+        checkedAt: new Date(),
+        updateCommand: isOutdated ? `npm install -g n8n-mcp@${latestVersion}` : undefined,
+        isFork: false
+      };
+
+      versionCheckCache = result;
+      lastCheckTime = now;
+
+      logger.debug('npm version check completed', {
+        current: currentVersion,
+        latest: latestVersion,
+        outdated: isOutdated
+      });
+
       return result;
     }
 
-    // Parse and validate JSON response
-    let data: unknown;
-    try {
-      data = await response.json();
-    } catch (error) {
-      throw new Error('Failed to parse npm registry response as JSON');
-    }
-
-    // Validate response structure
-    if (!data || typeof data !== 'object' || !('version' in data)) {
-      throw new Error('Invalid response format from npm registry');
-    }
-
-    const registryData = data as NpmRegistryResponse;
-    const latestVersion = registryData.version;
-
-    // Validate version format (semver: x.y.z or x.y.z-prerelease)
-    if (!latestVersion || !/^\d+\.\d+\.\d+/.test(latestVersion)) {
-      throw new Error(`Invalid version format from npm registry: ${latestVersion}`);
-    }
-
-    // Compare versions
-    const isOutdated = compareVersions(currentVersion, latestVersion) < 0;
-
-    const result: VersionCheckResult = {
-      currentVersion,
-      latestVersion,
-      isOutdated,
-      updateAvailable: isOutdated,
-      error: null,
-      checkedAt: new Date(),
-      updateCommand: isOutdated ? `npm install -g n8n-mcp@${latestVersion}` : undefined
-    };
-
-    // Cache the result
-    versionCheckCache = result;
-    lastCheckTime = now;
-
-    logger.debug('npm version check completed', {
-      current: currentVersion,
-      latest: latestVersion,
-      outdated: isOutdated
-    });
-
-    return result;
-
   } catch (error) {
-    logger.warn('Error checking npm version', {
+    logger.warn('Error checking version', {
       error: error instanceof Error ? error.message : String(error)
     });
 
@@ -137,10 +253,10 @@ export async function checkNpmVersion(forceRefresh: boolean = false): Promise<Ve
       isOutdated: false,
       updateAvailable: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-      checkedAt: new Date()
+      checkedAt: new Date(),
+      isFork
     };
 
-    // Cache error result to avoid rapid retry
     versionCheckCache = result;
     lastCheckTime = now;
 
@@ -196,6 +312,25 @@ export function formatVersionMessage(result: VersionCheckResult): string {
     return `Version check failed: ${result.error}. Current version: ${result.currentVersion}`;
   }
 
+  // Fork version handling
+  if (result.isFork) {
+    const messages: string[] = [];
+
+    if (result.forkOutdated && result.latestForkVersion) {
+      messages.push(`⚠️ Fork update available: ${result.currentVersion} → ${result.latestForkVersion}`);
+    } else {
+      messages.push(`✓ Fork is up to date: ${result.currentVersion}`);
+    }
+
+    if (result.upstreamOutdated && result.upstreamVersion) {
+      const baseVersion = result.currentVersion.split('-fork')[0];
+      messages.push(`📦 Upstream update: ${baseVersion} → ${result.upstreamVersion} (consider syncing)`);
+    }
+
+    return messages.join(' | ');
+  }
+
+  // Standard version handling
   if (!result.latestVersion) {
     return `Current version: ${result.currentVersion} (latest version unknown)`;
   }
