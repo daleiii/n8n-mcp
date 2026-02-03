@@ -68,6 +68,13 @@ interface HealthCheckResponseData {
     upToDate: boolean;
     message: string;
     updateCommand?: string;
+    // Fork-specific fields
+    isFork?: boolean;
+    forkRepo?: string;
+    latestForkVersion?: string | null;
+    forkOutdated?: boolean;
+    upstreamVersion?: string | null;
+    upstreamOutdated?: boolean;
   };
   performance: {
     responseTimeMs: number;
@@ -1664,7 +1671,14 @@ export async function handleHealthCheck(context?: InstanceContext): Promise<McpT
         latest: versionCheck.latestVersion,
         upToDate: !versionCheck.isOutdated,
         message: formatVersionMessage(versionCheck),
-        ...(versionCheck.updateCommand ? { updateCommand: versionCheck.updateCommand } : {})
+        ...(versionCheck.updateCommand ? { updateCommand: versionCheck.updateCommand } : {}),
+        // Fork-specific fields
+        ...(versionCheck.isFork !== undefined ? { isFork: versionCheck.isFork } : {}),
+        ...(versionCheck.forkRepo ? { forkRepo: versionCheck.forkRepo } : {}),
+        ...(versionCheck.latestForkVersion !== undefined ? { latestForkVersion: versionCheck.latestForkVersion } : {}),
+        ...(versionCheck.forkOutdated !== undefined ? { forkOutdated: versionCheck.forkOutdated } : {}),
+        ...(versionCheck.upstreamVersion !== undefined ? { upstreamVersion: versionCheck.upstreamVersion } : {}),
+        ...(versionCheck.upstreamOutdated !== undefined ? { upstreamOutdated: versionCheck.upstreamOutdated } : {})
       },
       performance: {
         responseTimeMs: responseTime,
@@ -1985,7 +1999,14 @@ export async function handleDiagnostic(request: any, context?: InstanceContext):
       latest: versionCheck.latestVersion,
       upToDate: !versionCheck.isOutdated,
       message: formatVersionMessage(versionCheck),
-      ...(versionCheck.updateCommand ? { updateCommand: versionCheck.updateCommand } : {})
+      ...(versionCheck.updateCommand ? { updateCommand: versionCheck.updateCommand } : {}),
+      // Fork-specific fields
+      ...(versionCheck.isFork !== undefined ? { isFork: versionCheck.isFork } : {}),
+      ...(versionCheck.forkRepo ? { forkRepo: versionCheck.forkRepo } : {}),
+      ...(versionCheck.latestForkVersion !== undefined ? { latestForkVersion: versionCheck.latestForkVersion } : {}),
+      ...(versionCheck.forkOutdated !== undefined ? { forkOutdated: versionCheck.forkOutdated } : {}),
+      ...(versionCheck.upstreamVersion !== undefined ? { upstreamVersion: versionCheck.upstreamVersion } : {}),
+      ...(versionCheck.upstreamOutdated !== undefined ? { upstreamOutdated: versionCheck.upstreamOutdated } : {})
     },
     toolsAvailability: {
       documentationTools: {
