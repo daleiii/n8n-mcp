@@ -36,8 +36,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const server_1 = require("./server");
 const logger_1 = require("../utils/logger");
-const config_manager_1 = require("../telemetry/config-manager");
-const early_error_logger_1 = require("../telemetry/early-error-logger");
+const telemetry_1 = require("../telemetry");
 const startup_checkpoints_1 = require("../telemetry/startup-checkpoints");
 const fs_1 = require("fs");
 process.on('uncaughtException', (error) => {
@@ -73,14 +72,14 @@ function isContainerEnvironment() {
 }
 async function main() {
     const startTime = Date.now();
-    const earlyLogger = early_error_logger_1.EarlyErrorLogger.getInstance();
+    const earlyLogger = telemetry_1.EarlyErrorLogger.getInstance();
     const checkpoints = [];
     try {
         earlyLogger.logCheckpoint(startup_checkpoints_1.STARTUP_CHECKPOINTS.PROCESS_STARTED);
         checkpoints.push(startup_checkpoints_1.STARTUP_CHECKPOINTS.PROCESS_STARTED);
         const args = process.argv.slice(2);
         if (args.length > 0 && args[0] === 'telemetry') {
-            const telemetryConfig = config_manager_1.TelemetryConfigManager.getInstance();
+            const telemetryConfig = telemetry_1.TelemetryConfigManager.getInstance();
             const action = args[1];
             switch (action) {
                 case 'enable':

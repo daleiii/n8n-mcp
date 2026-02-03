@@ -56,6 +56,11 @@ exports.handleDiagnostic = handleDiagnostic;
 exports.handleWorkflowVersions = handleWorkflowVersions;
 exports.handleDeployTemplate = handleDeployTemplate;
 exports.handleTriggerWebhookWorkflow = handleTriggerWebhookWorkflow;
+exports.handleListCredentials = handleListCredentials;
+exports.handleGetCredential = handleGetCredential;
+exports.handleCreateCredential = handleCreateCredential;
+exports.handleUpdateCredential = handleUpdateCredential;
+exports.handleDeleteCredential = handleDeleteCredential;
 const n8n_api_client_1 = require("../services/n8n-api-client");
 const n8n_api_1 = require("../config/n8n-api");
 const n8n_api_2 = require("../types/n8n-api");
@@ -2015,6 +2020,258 @@ async function handleTriggerWebhookWorkflow(args, context) {
                 error: (0, n8n_errors_1.getUserFriendlyErrorMessage)(error),
                 code: error.code,
                 details: error.details
+            };
+        }
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
+    }
+}
+const listCredentialsSchema = zod_1.z.object({
+    limit: zod_1.z.number().min(1).max(100).optional(),
+    cursor: zod_1.z.string().optional(),
+    type: zod_1.z.string().optional()
+});
+async function handleListCredentials(args, context) {
+    try {
+        const client = ensureApiConfigured(context);
+        const input = listCredentialsSchema.parse(args || {});
+        const response = await client.listCredentials({
+            limit: input.limit || 100,
+            cursor: input.cursor
+        });
+        let credentials = response.data;
+        if (input.type) {
+            credentials = credentials.filter(c => c.type === input.type);
+        }
+        const safeCredentials = credentials.map(cred => ({
+            id: cred.id,
+            name: cred.name,
+            type: cred.type,
+            createdAt: cred.createdAt,
+            updatedAt: cred.updatedAt
+        }));
+        return {
+            success: true,
+            data: {
+                credentials: safeCredentials,
+                returned: safeCredentials.length,
+                nextCursor: response.nextCursor,
+                hasMore: !!response.nextCursor
+            }
+        };
+    }
+    catch (error) {
+        if (error instanceof zod_1.z.ZodError) {
+            return {
+                success: false,
+                error: 'Invalid input',
+                details: { errors: error.errors }
+            };
+        }
+        if (error instanceof n8n_errors_1.N8nApiError) {
+            return {
+                success: false,
+                error: (0, n8n_errors_1.getUserFriendlyErrorMessage)(error),
+                code: error.code
+            };
+        }
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
+    }
+}
+const getCredentialSchema = zod_1.z.object({
+    id: zod_1.z.string()
+});
+async function handleGetCredential(args, context) {
+    try {
+        const client = ensureApiConfigured(context);
+        const { id } = getCredentialSchema.parse(args);
+        const credential = await client.getCredential(id);
+        return {
+            success: true,
+            data: {
+                id: credential.id,
+                name: credential.name,
+                type: credential.type,
+                nodesAccess: credential.nodesAccess,
+                createdAt: credential.createdAt,
+                updatedAt: credential.updatedAt
+            }
+        };
+    }
+    catch (error) {
+        if (error instanceof zod_1.z.ZodError) {
+            return {
+                success: false,
+                error: 'Invalid input',
+                details: { errors: error.errors }
+            };
+        }
+        if (error instanceof n8n_errors_1.N8nApiError) {
+            return {
+                success: false,
+                error: (0, n8n_errors_1.getUserFriendlyErrorMessage)(error),
+                code: error.code
+            };
+        }
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
+    }
+}
+const createCredentialSchema = zod_1.z.object({
+    name: zod_1.z.string(),
+    type: zod_1.z.string(),
+    data: zod_1.z.record(zod_1.z.unknown()),
+    nodesAccess: zod_1.z.array(zod_1.z.object({
+        nodeType: zod_1.z.string()
+    })).optional()
+});
+async function handleCreateCredential(args, context) {
+    try {
+        const client = ensureApiConfigured(context);
+        const input = createCredentialSchema.parse(args);
+        const credential = await client.createCredential({
+            name: input.name,
+            type: input.type,
+            data: input.data,
+            nodesAccess: input.nodesAccess
+        });
+        return {
+            success: true,
+            data: {
+                id: credential.id,
+                name: credential.name,
+                type: credential.type,
+                createdAt: credential.createdAt
+            },
+            message: `Credential "${credential.name}" created successfully.`
+        };
+    }
+    catch (error) {
+        if (error instanceof zod_1.z.ZodError) {
+            return {
+                success: false,
+                error: 'Invalid input',
+                details: { errors: error.errors }
+            };
+        }
+        if (error instanceof n8n_errors_1.N8nApiError) {
+            return {
+                success: false,
+                error: (0, n8n_errors_1.getUserFriendlyErrorMessage)(error),
+                code: error.code
+            };
+        }
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
+    }
+}
+const updateCredentialSchema = zod_1.z.object({
+    id: zod_1.z.string(),
+    name: zod_1.z.string().optional(),
+    type: zod_1.z.string().optional(),
+    data: zod_1.z.record(zod_1.z.unknown()).optional(),
+    nodesAccess: zod_1.z.array(zod_1.z.object({
+        nodeType: zod_1.z.string()
+    })).optional()
+});
+async function handleUpdateCredential(args, context) {
+    try {
+        const client = ensureApiConfigured(context);
+        const input = updateCredentialSchema.parse(args);
+        const updatePayload = {};
+        if (input.name !== undefined)
+            updatePayload.name = input.name;
+        if (input.type !== undefined)
+            updatePayload.type = input.type;
+        if (input.data !== undefined)
+            updatePayload.data = input.data;
+        if (input.nodesAccess !== undefined)
+            updatePayload.nodesAccess = input.nodesAccess;
+        if (Object.keys(updatePayload).length === 0) {
+            return {
+                success: false,
+                error: 'No update fields provided. Specify name, type, data, or nodesAccess.'
+            };
+        }
+        const credential = await client.updateCredential(input.id, updatePayload);
+        return {
+            success: true,
+            data: {
+                id: credential.id,
+                name: credential.name,
+                type: credential.type,
+                updatedAt: credential.updatedAt
+            },
+            message: `Credential "${credential.name}" updated successfully.`
+        };
+    }
+    catch (error) {
+        if (error instanceof zod_1.z.ZodError) {
+            return {
+                success: false,
+                error: 'Invalid input',
+                details: { errors: error.errors }
+            };
+        }
+        if (error instanceof n8n_errors_1.N8nApiError) {
+            return {
+                success: false,
+                error: (0, n8n_errors_1.getUserFriendlyErrorMessage)(error),
+                code: error.code
+            };
+        }
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error occurred'
+        };
+    }
+}
+const deleteCredentialSchema = zod_1.z.object({
+    id: zod_1.z.string()
+});
+async function handleDeleteCredential(args, context) {
+    try {
+        const client = ensureApiConfigured(context);
+        const { id } = deleteCredentialSchema.parse(args);
+        let credentialName = id;
+        try {
+            const credential = await client.getCredential(id);
+            credentialName = credential.name || id;
+        }
+        catch {
+        }
+        await client.deleteCredential(id);
+        return {
+            success: true,
+            data: {
+                id,
+                deleted: true
+            },
+            message: `Credential "${credentialName}" deleted successfully.`
+        };
+    }
+    catch (error) {
+        if (error instanceof zod_1.z.ZodError) {
+            return {
+                success: false,
+                error: 'Invalid input',
+                details: { errors: error.errors }
+            };
+        }
+        if (error instanceof n8n_errors_1.N8nApiError) {
+            return {
+                success: false,
+                error: (0, n8n_errors_1.getUserFriendlyErrorMessage)(error),
+                code: error.code
             };
         }
         return {

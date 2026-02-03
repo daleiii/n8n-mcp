@@ -20,6 +20,8 @@ export interface ParsedNode {
     isToolVariant?: boolean;
     toolVariantOf?: string;
     hasToolVariant?: boolean;
+    sourceType?: 'official' | 'community' | 'custom';
+    sourcePath?: string;
 }
 export declare class NodeParser {
     private propertyExtractor;

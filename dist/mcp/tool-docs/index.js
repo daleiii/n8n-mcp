@@ -8,9 +8,11 @@ const templates_1 = require("./templates");
 const system_1 = require("./system");
 const guides_1 = require("./guides");
 const workflow_management_1 = require("./workflow_management");
+const credentials_1 = require("./credentials");
 exports.toolsDocumentation = {
     tools_documentation: system_1.toolsDocumentationDoc,
     n8n_health_check: system_1.n8nHealthCheckDoc,
+    n8n_refresh_custom_nodes: system_1.n8nRefreshCustomNodesDoc,
     ai_agents_guide: guides_1.aiAgentsGuide,
     search_nodes: discovery_1.searchNodesDoc,
     get_node: configuration_1.getNodeDoc,
@@ -29,6 +31,11 @@ exports.toolsDocumentation = {
     n8n_test_workflow: workflow_management_1.n8nTestWorkflowDoc,
     n8n_executions: workflow_management_1.n8nExecutionsDoc,
     n8n_workflow_versions: workflow_management_1.n8nWorkflowVersionsDoc,
-    n8n_deploy_template: workflow_management_1.n8nDeployTemplateDoc
+    n8n_deploy_template: workflow_management_1.n8nDeployTemplateDoc,
+    n8n_list_credentials: credentials_1.n8nListCredentialsDoc,
+    n8n_get_credential: credentials_1.n8nGetCredentialDoc,
+    n8n_create_credential: credentials_1.n8nCreateCredentialDoc,
+    n8n_update_credential: credentials_1.n8nUpdateCredentialDoc,
+    n8n_delete_credential: credentials_1.n8nDeleteCredentialDoc
 };
 //# sourceMappingURL=index.js.map

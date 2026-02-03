@@ -1,5 +1,5 @@
 import { InstanceContext } from '../types/instance-context';
-import { EarlyErrorLogger } from '../telemetry/early-error-logger';
+import { EarlyErrorLogger } from '../telemetry';
 export declare class N8NDocumentationMCPServer {
     private server;
     private db;
@@ -13,6 +13,9 @@ export declare class N8NDocumentationMCPServer {
     private previousToolTimestamp;
     private earlyLogger;
     private disabledToolsCache;
+    private useSharedDatabase;
+    private sharedDbState;
+    private isShutdown;
     constructor(instanceContext?: InstanceContext, earlyLogger?: EarlyErrorLogger);
     close(): Promise<void>;
     private initializeDatabase;
@@ -65,6 +68,7 @@ export declare class N8NDocumentationMCPServer {
     private getAIToolExamples;
     private validateNodeMinimal;
     private getToolsDocumentation;
+    private handleRefreshCustomNodes;
     connect(transport: any): Promise<void>;
     private listTemplates;
     private listNodeTemplates;

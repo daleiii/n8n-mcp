@@ -11,10 +11,14 @@ export interface CommunityNodeFields {
     npmDownloads?: number;
     communityFetchedAt?: string;
 }
+export interface CustomNodeFields {
+    sourceType?: 'official' | 'community' | 'custom';
+    sourcePath?: string;
+}
 export declare class NodeRepository {
     private db;
     constructor(dbOrService: DatabaseAdapter | SQLiteStorageService);
-    saveNode(node: ParsedNode & Partial<CommunityNodeFields>): void;
+    saveNode(node: ParsedNode & Partial<CommunityNodeFields> & Partial<CustomNodeFields>): void;
     getNode(nodeType: string): any;
     getAITools(): any[];
     private safeJsonParse;
@@ -52,6 +56,13 @@ export declare class NodeRepository {
     hasNodeByNpmPackage(npmPackageName: string): boolean;
     getNodeByNpmPackage(npmPackageName: string): any | null;
     deleteCommunityNodes(): number;
+    getCustomNodes(): any[];
+    deleteCustomNodes(): number;
+    getNodesBySourceType(sourceType: 'official' | 'community' | 'custom'): any[];
+    getCustomNodeStats(): {
+        total: number;
+        byPath: Map<string, number>;
+    };
     updateNodeReadme(nodeType: string, readme: string): void;
     updateNodeAISummary(nodeType: string, summary: object): void;
     getCommunityNodesWithoutReadme(): any[];

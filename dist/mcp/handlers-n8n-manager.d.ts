@@ -26,4 +26,9 @@ export declare function handleDiagnostic(request: any, context?: InstanceContext
 export declare function handleWorkflowVersions(args: unknown, repository: NodeRepository, context?: InstanceContext): Promise<McpToolResponse>;
 export declare function handleDeployTemplate(args: unknown, templateService: TemplateService, repository: NodeRepository, context?: InstanceContext): Promise<McpToolResponse>;
 export declare function handleTriggerWebhookWorkflow(args: unknown, context?: InstanceContext): Promise<McpToolResponse>;
+export declare function handleListCredentials(args: unknown, context?: InstanceContext): Promise<McpToolResponse>;
+export declare function handleGetCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse>;
+export declare function handleCreateCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse>;
+export declare function handleUpdateCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse>;
+export declare function handleDeleteCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse>;
 //# sourceMappingURL=handlers-n8n-manager.d.ts.map

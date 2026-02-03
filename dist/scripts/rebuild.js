@@ -58,6 +58,13 @@ async function rebuild() {
     console.log('🗑️  Cleared existing data\n');
     const nodes = await loader.loadAllNodes();
     console.log(`📦 Loaded ${nodes.length} nodes from packages\n`);
+    const customNodePaths = parseCustomNodePaths(process.env.CUSTOM_NODE_PATHS);
+    if (customNodePaths.length > 0) {
+        console.log(`📦 Loading custom nodes from ${customNodePaths.length} paths...`);
+        const customNodes = await loader.loadCustomNodes(customNodePaths);
+        console.log(`   Found ${customNodes.length} custom nodes\n`);
+        nodes.push(...customNodes);
+    }
     const stats = {
         successful: 0,
         failed: 0,
@@ -67,13 +74,18 @@ async function rebuild() {
         withProperties: 0,
         withOperations: 0,
         withDocs: 0,
-        toolVariants: 0
+        toolVariants: 0,
+        customNodes: 0
     };
     console.log('🔄 Processing nodes...');
     const processedNodes = [];
-    for (const { packageName, nodeName, NodeClass } of nodes) {
+    for (const { packageName, nodeName, NodeClass, sourceType, sourcePath } of nodes) {
         try {
             const parsed = parser.parse(NodeClass, packageName);
+            parsed.sourceType = sourceType || 'official';
+            if (sourcePath) {
+                parsed.sourcePath = sourcePath;
+            }
             if (!parsed.nodeType || !parsed.displayName) {
                 throw new Error(`Missing required fields - nodeType: ${parsed.nodeType}, displayName: ${parsed.displayName}, packageName: ${parsed.packageName}`);
             }
@@ -121,7 +133,10 @@ async function rebuild() {
                 stats.withOperations++;
             if (docs)
                 stats.withDocs++;
-            console.log(`✅ ${parsed.nodeType} [Props: ${parsed.properties.length}, Ops: ${parsed.operations.length}]`);
+            if (parsed.sourceType === 'custom')
+                stats.customNodes++;
+            const sourceLabel = parsed.sourceType === 'custom' ? ' [CUSTOM]' : '';
+            console.log(`✅ ${parsed.nodeType}${sourceLabel} [Props: ${parsed.properties.length}, Ops: ${parsed.operations.length}]`);
         }
         catch (error) {
             stats.failed++;
@@ -156,6 +171,9 @@ async function rebuild() {
     console.log(`   With Properties: ${stats.withProperties}`);
     console.log(`   With Operations: ${stats.withOperations}`);
     console.log(`   With Documentation: ${stats.withDocs}`);
+    if (stats.customNodes > 0) {
+        console.log(`   Custom Nodes: ${stats.customNodes}`);
+    }
     console.log('\n🧹 Checking for templates to sanitize...');
     const templateCount = db.prepare('SELECT COUNT(*) as count FROM templates').get();
     if (templateCount && templateCount.count > 0) {
@@ -251,6 +269,15 @@ function validateDatabase(repository) {
         passed: issues.length === 0,
         issues
     };
+}
+function parseCustomNodePaths(envValue) {
+    if (!envValue || envValue.trim() === '') {
+        return [];
+    }
+    return envValue
+        .split(',')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
 }
 if (require.main === module) {
     rebuild().catch(console.error);

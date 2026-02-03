@@ -205,6 +205,9 @@ class ToolValidation {
     static validateWorkflowId(args) {
         return Validator.validateString(args.id, 'id');
     }
+    static validateCredentialId(args) {
+        return Validator.validateString(args.id, 'id');
+    }
     static validateCreateWorkflow(args) {
         const nameResult = Validator.validateString(args.name, 'name');
         const nodesResult = Validator.validateArray(args.nodes, 'nodes');

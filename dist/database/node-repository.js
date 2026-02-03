@@ -21,10 +21,11 @@ class NodeRepository {
         properties_schema, operations, credentials_required,
         outputs, output_names,
         is_community, is_verified, author_name, author_github_url,
-        npm_package_name, npm_version, npm_downloads, community_fetched_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        npm_package_name, npm_version, npm_downloads, community_fetched_at,
+        source_type, source_path
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-        stmt.run(node.nodeType, node.packageName, node.displayName, node.description, node.category, node.style, node.isAITool ? 1 : 0, node.isTrigger ? 1 : 0, node.isWebhook ? 1 : 0, node.isVersioned ? 1 : 0, node.isToolVariant ? 1 : 0, node.toolVariantOf || null, node.hasToolVariant ? 1 : 0, node.version, node.documentation || null, JSON.stringify(node.properties, null, 2), JSON.stringify(node.operations, null, 2), JSON.stringify(node.credentials, null, 2), node.outputs ? JSON.stringify(node.outputs, null, 2) : null, node.outputNames ? JSON.stringify(node.outputNames, null, 2) : null, node.isCommunity ? 1 : 0, node.isVerified ? 1 : 0, node.authorName || null, node.authorGithubUrl || null, node.npmPackageName || null, node.npmVersion || null, node.npmDownloads || 0, node.communityFetchedAt || null);
+        stmt.run(node.nodeType, node.packageName, node.displayName, node.description, node.category, node.style, node.isAITool ? 1 : 0, node.isTrigger ? 1 : 0, node.isWebhook ? 1 : 0, node.isVersioned ? 1 : 0, node.isToolVariant ? 1 : 0, node.toolVariantOf || null, node.hasToolVariant ? 1 : 0, node.version, node.documentation || null, JSON.stringify(node.properties, null, 2), JSON.stringify(node.operations, null, 2), JSON.stringify(node.credentials, null, 2), node.outputs ? JSON.stringify(node.outputs, null, 2) : null, node.outputNames ? JSON.stringify(node.outputNames, null, 2) : null, node.isCommunity ? 1 : 0, node.isVerified ? 1 : 0, node.authorName || null, node.authorGithubUrl || null, node.npmPackageName || null, node.npmVersion || null, node.npmDownloads || 0, node.communityFetchedAt || null, node.sourceType || 'official', node.sourcePath || null);
     }
     getNode(nodeType) {
         const normalizedType = node_type_normalizer_1.NodeTypeNormalizer.normalizeToFullForm(nodeType);
@@ -238,6 +239,8 @@ class NodeRepository {
                 ? this.safeJsonParse(row.ai_documentation_summary, null)
                 : null,
             aiSummaryGeneratedAt: row.ai_summary_generated_at || null,
+            sourceType: row.source_type || 'official',
+            sourcePath: row.source_path || null,
         };
     }
     getNodeOperations(nodeType, resource) {
@@ -430,6 +433,41 @@ class NodeRepository {
     deleteCommunityNodes() {
         const result = this.db.prepare('DELETE FROM nodes WHERE is_community = 1').run();
         return result.changes;
+    }
+    getCustomNodes() {
+        const rows = this.db.prepare(`
+      SELECT * FROM nodes WHERE source_type = 'custom'
+      ORDER BY display_name
+    `).all();
+        return rows.map(row => this.parseNodeRow(row));
+    }
+    deleteCustomNodes() {
+        const result = this.db.prepare("DELETE FROM nodes WHERE source_type = 'custom'").run();
+        return result.changes;
+    }
+    getNodesBySourceType(sourceType) {
+        const rows = this.db.prepare(`
+      SELECT * FROM nodes WHERE source_type = ?
+      ORDER BY display_name
+    `).all(sourceType);
+        return rows.map(row => this.parseNodeRow(row));
+    }
+    getCustomNodeStats() {
+        const totalResult = this.db.prepare("SELECT COUNT(*) as count FROM nodes WHERE source_type = 'custom'").get();
+        const byPathRows = this.db.prepare(`
+      SELECT source_path, COUNT(*) as count
+      FROM nodes
+      WHERE source_type = 'custom' AND source_path IS NOT NULL
+      GROUP BY source_path
+    `).all();
+        const byPath = new Map();
+        for (const row of byPathRows) {
+            byPath.set(row.source_path, row.count);
+        }
+        return {
+            total: totalResult.count,
+            byPath
+        };
     }
     updateNodeReadme(nodeType, readme) {
         const stmt = this.db.prepare(`

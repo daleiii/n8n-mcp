@@ -27,6 +27,7 @@ export declare class ToolValidation {
     static validateSearchNodes(args: any): ValidationResult;
     static validateListNodeTemplates(args: any): ValidationResult;
     static validateWorkflowId(args: any): ValidationResult;
+    static validateCredentialId(args: any): ValidationResult;
     static validateCreateWorkflow(args: any): ValidationResult;
 }
 //# sourceMappingURL=validation-schemas.d.ts.map

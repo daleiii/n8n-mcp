@@ -98,7 +98,7 @@ When working with Code nodes, always start by calling the relevant guide:
    - validate_node({nodeType: "nodes-base.slack", config: {...}}) - Full validation with errors/warnings/suggestions
    - validate_workflow({workflow: {...}}) - Validate entire workflow
 
-## Tool Categories (19 Tools Total)
+## Tool Categories (20 Tools Total)
 
 **Discovery Tools** (1 tool)
 - search_nodes - Full-text search across all nodes (supports OR, AND, FUZZY modes)
@@ -121,6 +121,9 @@ When working with Code nodes, always start by calling the relevant guide:
   - searchMode='by_nodes': Find templates using specific nodes
   - searchMode='by_task': Curated task-based templates
   - searchMode='by_metadata': Filter by complexity/services
+
+**System Tools** (1 tool)
+- n8n_refresh_custom_nodes - Reload custom nodes from filesystem paths
 
 **n8n API Tools** (13 tools, requires N8N_API_URL configuration)
 - n8n_create_workflow - Create new workflows
