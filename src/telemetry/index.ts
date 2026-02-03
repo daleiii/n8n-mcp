@@ -1,9 +1,8 @@
 /**
- * Telemetry Module
- * Exports for anonymous usage statistics
+ * Telemetry Module (Disabled)
+ * This fork has telemetry disabled - all exports are no-op stubs
  */
 
-export { TelemetryManager, telemetry } from './telemetry-manager';
-export { TelemetryConfigManager } from './config-manager';
-export { WorkflowSanitizer } from './workflow-sanitizer';
-export type { TelemetryConfig } from './config-manager';
+export { TelemetryManager, telemetry } from './telemetry-stub';
+export { TelemetryConfigManager, WorkflowSanitizer, EarlyErrorLogger } from './telemetry-stub';
+export type { TelemetryConfig } from './telemetry-stub';

@@ -263,48 +263,9 @@ If you're running n8n locally (e.g., `http://localhost:5678` or Docker), you nee
 
 ## 🔐 Privacy & Telemetry
 
-n8n-mcp collects anonymous usage statistics to improve the tool. [View our privacy policy](./PRIVACY.md).
+**Telemetry is disabled in this fork.** No usage data is collected or transmitted. All telemetry code has been replaced with no-op stubs.
 
-### Opting Out
-
-**For npx users:**
-```bash
-npx n8n-mcp telemetry disable
-```
-
-**For Docker users:**
-Add the following environment variable to your Docker configuration:
-```json
-"-e", "N8N_MCP_TELEMETRY_DISABLED=true"
-```
-
-Example in Claude Desktop config:
-```json
-{
-  "mcpServers": {
-    "n8n-mcp": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "--init",
-        "-e", "MCP_MODE=stdio",
-        "-e", "LOG_LEVEL=error",
-        "-e", "N8N_MCP_TELEMETRY_DISABLED=true",
-        "ghcr.io/czlonkowski/n8n-mcp:latest"
-      ]
-    }
-  }
-}
-```
-
-**For docker-compose users:**
-Set in your environment file or docker-compose.yml:
-```yaml
-environment:
-  N8N_MCP_TELEMETRY_DISABLED: "true"
-```
+The upstream project ([czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp)) includes optional anonymous telemetry - see their repository for details if you prefer the original version.
 
 ## ⚙️ Database & Memory Configuration
 

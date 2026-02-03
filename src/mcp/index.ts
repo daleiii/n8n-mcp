@@ -2,8 +2,7 @@
 
 import { N8NDocumentationMCPServer } from './server';
 import { logger } from '../utils/logger';
-import { TelemetryConfigManager } from '../telemetry/config-manager';
-import { EarlyErrorLogger } from '../telemetry/early-error-logger';
+import { TelemetryConfigManager, EarlyErrorLogger } from '../telemetry';
 import { STARTUP_CHECKPOINTS, findFailedCheckpoint, StartupCheckpoint } from '../telemetry/startup-checkpoints';
 import { existsSync } from 'fs';
 

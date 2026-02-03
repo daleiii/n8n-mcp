@@ -39,8 +39,7 @@ import {
   STANDARD_PROTOCOL_VERSION
 } from '../utils/protocol-version';
 import { InstanceContext } from '../types/instance-context';
-import { telemetry } from '../telemetry';
-import { EarlyErrorLogger } from '../telemetry/early-error-logger';
+import { telemetry, EarlyErrorLogger } from '../telemetry';
 import { STARTUP_CHECKPOINTS } from '../telemetry/startup-checkpoints';
 
 interface NodeRow {
