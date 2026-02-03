@@ -140,3 +140,15 @@ n8n-mcp-wrapper.sh
 
 # Telemetry configuration (user-specific)
 ~/.n8n-mcp/
+
+# SQLite temp files
+:memory:
+*.db-journal
+*.db-wal
+
+# Log files (root level)
+fetch_log.txt
+test-output.txt
+
+# Coverage (root level)
+coverage.json
