@@ -31,8 +31,12 @@ WORKDIR /app
 RUN apk add --no-cache curl su-exec && \
     rm -rf /var/cache/apk/*
 
-# Copy runtime-only package.json
+# Copy runtime-only package.json and sync version from main package.json
 COPY package.runtime.json package.json
+COPY package.json /tmp/package.main.json
+RUN VERSION=$(grep -o '"version": *"[^"]*"' /tmp/package.main.json | head -1 | cut -d'"' -f4) && \
+    sed -i "s/\"version\": *\"[^\"]*\"/\"version\": \"$VERSION\"/" package.json && \
+    rm /tmp/package.main.json
 
 # Install runtime dependencies with better-sqlite3 compilation
 # Build tools (python3, make, g++) are installed, used for compilation, then removed
