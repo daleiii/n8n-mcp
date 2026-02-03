@@ -123,10 +123,12 @@ describe('NodeRepository - Core Functionality', () => {
         null, // npmPackageName
         null, // npmVersion
         0, // npmDownloads
-        null  // communityFetchedAt
+        null, // communityFetchedAt
+        'official', // sourceType
+        null  // sourcePath
       );
     });
-    
+
     it('should handle nodes without optional fields', () => {
       const minimalNode: ParsedNode = {
         nodeType: 'nodes-base.simple',
@@ -191,6 +193,8 @@ describe('NodeRepository - Core Functionality', () => {
         npm_readme: null,
         ai_documentation_summary: null,
         ai_summary_generated_at: null,
+        source_type: 'official',
+        source_path: null,
       };
 
       mockAdapter._setMockData('node:nodes-base.httpRequest', mockRow);
@@ -229,9 +233,11 @@ describe('NodeRepository - Core Functionality', () => {
         npmReadme: null,
         aiDocumentationSummary: null,
         aiSummaryGeneratedAt: null,
+        sourceType: 'official',
+        sourcePath: null,
       });
     });
-    
+
     it('should return null for non-existent nodes', () => {
       const result = repository.getNode('non-existent');
       expect(result).toBeNull();
@@ -270,6 +276,8 @@ describe('NodeRepository - Core Functionality', () => {
         npm_readme: null,
         ai_documentation_summary: null,
         ai_summary_generated_at: null,
+        source_type: 'official',
+        source_path: null,
       };
 
       mockAdapter._setMockData('node:nodes-base.broken', mockRow);
@@ -432,6 +440,8 @@ describe('NodeRepository - Core Functionality', () => {
         npm_readme: null,
         ai_documentation_summary: null,
         ai_summary_generated_at: null,
+        source_type: 'official',
+        source_path: null,
       };
 
       mockAdapter._setMockData('node:nodes-base.bool-test', mockRow);

@@ -64,8 +64,9 @@ describe('NodeRepository - Outputs Handling', () => {
         properties_schema, operations, credentials_required,
         outputs, output_names,
         is_community, is_verified, author_name, author_github_url,
-        npm_package_name, npm_version, npm_downloads, community_fetched_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        npm_package_name, npm_version, npm_downloads, community_fetched_at,
+        source_type, source_path
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
       expect(mockStatement.run).toHaveBeenCalledWith(
@@ -96,7 +97,9 @@ describe('NodeRepository - Outputs Handling', () => {
         null, // npm_package_name
         null, // npm_version
         0, // npm_downloads
-        null // community_fetched_at
+        null, // community_fetched_at
+        'official', // source_type
+        null // source_path
       );
     });
 
@@ -254,7 +257,9 @@ describe('NodeRepository - Outputs Handling', () => {
         community_fetched_at: null,
         npm_readme: null,
         ai_documentation_summary: null,
-        ai_summary_generated_at: null
+        ai_summary_generated_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -292,7 +297,9 @@ describe('NodeRepository - Outputs Handling', () => {
         communityFetchedAt: null,
         npmReadme: null,
         aiDocumentationSummary: null,
-        aiSummaryGeneratedAt: null
+        aiSummaryGeneratedAt: null,
+        sourceType: 'official',
+        sourcePath: null
       });
     });
 
@@ -329,7 +336,9 @@ describe('NodeRepository - Outputs Handling', () => {
         npm_package_name: null,
         npm_version: null,
         npm_downloads: 0,
-        community_fetched_at: null
+        community_fetched_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -371,7 +380,9 @@ describe('NodeRepository - Outputs Handling', () => {
         npm_package_name: null,
         npm_version: null,
         npm_downloads: 0,
-        community_fetched_at: null
+        community_fetched_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -411,7 +422,9 @@ describe('NodeRepository - Outputs Handling', () => {
         npm_package_name: null,
         npm_version: null,
         npm_downloads: 0,
-        community_fetched_at: null
+        community_fetched_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -451,7 +464,9 @@ describe('NodeRepository - Outputs Handling', () => {
         npm_package_name: null,
         npm_version: null,
         npm_downloads: 0,
-        community_fetched_at: null
+        community_fetched_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -556,6 +571,8 @@ describe('NodeRepository - Outputs Handling', () => {
         npm_version: null,
         npm_downloads: 0,
         community_fetched_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.all.mockReturnValue([mockRow]);
@@ -596,6 +613,8 @@ describe('NodeRepository - Outputs Handling', () => {
         npm_version: null,
         npm_downloads: 0,
         community_fetched_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.all.mockReturnValue([mockRow]);
@@ -680,6 +699,8 @@ describe('NodeRepository - Outputs Handling', () => {
         npm_version: null,
         npm_downloads: 0,
         community_fetched_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
