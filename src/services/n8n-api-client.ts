@@ -23,7 +23,7 @@ import {
   SourceControlPullResult,
   SourceControlPushResult,
 } from '../types/n8n-api';
-import { handleN8nApiError, logN8nError } from '../utils/n8n-errors';
+import { handleN8nApiError, logN8nError, N8nApiError } from '../utils/n8n-errors';
 import { cleanWorkflowForCreate, cleanWorkflowForUpdate } from './n8n-validation';
 import {
   fetchN8nVersion,
@@ -398,20 +398,41 @@ export class N8nApiClient {
    * - Modern (n8n v0.200.0+): {data: Credential[], nextCursor?: string}
    * - Legacy (older versions): Credential[] (wrapped automatically)
    *
-   * @see https://github.com/czlonkowski/n8n-mcp/issues/349
+   * @deprecated The n8n public API does not support listing credentials (security by design).
+   * This method is kept for backwards compatibility but will always throw an error.
+   * @see https://docs.n8n.io/api/api-reference/#tag/credential
    */
-  async listCredentials(params: CredentialListParams = {}): Promise<CredentialListResponse> {
-    try {
-      const response = await this.client.get('/credentials', { params });
-      return this.validateListResponse<Credential>(response.data, 'credentials');
-    } catch (error) {
-      throw handleN8nApiError(error);
-    }
+  async listCredentials(_params: CredentialListParams = {}): Promise<CredentialListResponse> {
+    throw new N8nApiError(
+      'Listing credentials is not supported by the n8n public API. ' +
+      'The API only supports create, update, delete, and schema retrieval for credentials.',
+      405
+    );
   }
 
-  async getCredential(id: string): Promise<Credential> {
+  /**
+   * @deprecated The n8n public API does not support getting credentials by ID (security by design).
+   * This method is kept for backwards compatibility but will always throw an error.
+   * @see https://docs.n8n.io/api/api-reference/#tag/credential
+   */
+  async getCredential(_id: string): Promise<Credential> {
+    throw new N8nApiError(
+      'Getting credentials by ID is not supported by the n8n public API. ' +
+      'The API only supports create, update, delete, and schema retrieval for credentials.',
+      405
+    );
+  }
+
+  /**
+   * Get the schema for a credential type.
+   * Shows required and optional fields for creating/updating credentials.
+   *
+   * @param credentialTypeName - The credential type name (e.g., "slackApi", "httpBasicAuth")
+   * @returns Schema definition for the credential type
+   */
+  async getCredentialSchema(credentialTypeName: string): Promise<unknown> {
     try {
-      const response = await this.client.get(`/credentials/${id}`);
+      const response = await this.client.get(`/credentials/schema/${credentialTypeName}`);
       return response.data;
     } catch (error) {
       throw handleN8nApiError(error);

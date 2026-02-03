@@ -726,50 +726,48 @@ describe('N8nApiClient', () => {
       });
     });
 
-    describe('listCredentials - validation', () => {
-      it('should handle modern format with data and nextCursor', async () => {
-        const response = { data: [{ id: '1' }], nextCursor: 'abc123' };
-        mockAxiosInstance.get.mockResolvedValue({ data: response });
-
-        const result = await client.listCredentials();
-
-        expect(result).toEqual(response);
-      });
-
-      it('should wrap legacy array format and log warning', async () => {
-        const credentials = [{ id: '1' }];
-        mockAxiosInstance.get.mockResolvedValue({ data: credentials });
-
-        const result = await client.listCredentials();
-
-        expect(result).toEqual({ data: credentials, nextCursor: null });
-        expect(logger.warn).toHaveBeenCalledWith(
-          expect.stringContaining('credentials')
-        );
-      });
-
-      it('should throw error on null response', async () => {
-        mockAxiosInstance.get.mockResolvedValue({ data: null });
-
+    describe('listCredentials - not supported', () => {
+      // NOTE: n8n public API does NOT support listing credentials (security by design)
+      // The listCredentials method now throws an error explaining this limitation
+      it('should throw error explaining API limitation', async () => {
         await expect(client.listCredentials()).rejects.toThrow(
-          'Invalid response from n8n API for credentials: response is not an object'
+          'Listing credentials is not supported by the n8n public API'
         );
       });
+    });
 
-      it('should throw error on invalid structure', async () => {
-        mockAxiosInstance.get.mockResolvedValue({ data: { items: [] } });
-
-        await expect(client.listCredentials()).rejects.toThrow(
-          'Invalid response from n8n API for credentials'
+    describe('getCredential - not supported', () => {
+      // NOTE: n8n public API does NOT support getting credentials by ID (security by design)
+      it('should throw error explaining API limitation', async () => {
+        await expect(client.getCredential('123')).rejects.toThrow(
+          'Getting credentials by ID is not supported by the n8n public API'
         );
       });
+    });
 
-      it('should throw error when data is not an array', async () => {
-        mockAxiosInstance.get.mockResolvedValue({ data: { data: 'invalid' } });
+    describe('getCredentialSchema', () => {
+      it('should get credential schema successfully', async () => {
+        const mockSchema = {
+          additionalProperties: false,
+          type: 'object',
+          properties: { user: { type: 'string' }, password: { type: 'string' } },
+          required: ['user', 'password']
+        };
+        mockAxiosInstance.get.mockResolvedValue({ data: mockSchema });
 
-        await expect(client.listCredentials()).rejects.toThrow(
-          'Invalid response from n8n API for credentials'
-        );
+        const result = await client.getCredentialSchema('httpBasicAuth');
+
+        expect(result).toEqual(mockSchema);
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/credentials/schema/httpBasicAuth');
+      });
+
+      it('should handle API errors', async () => {
+        mockAxiosInstance.get.mockRejectedValue({
+          isAxiosError: true,
+          response: { status: 404, data: { message: 'Credential type not found' } }
+        });
+
+        await expect(client.getCredentialSchema('unknownType')).rejects.toThrow();
       });
     });
 
@@ -1053,26 +1051,26 @@ describe('N8nApiClient', () => {
       client = new N8nApiClient(defaultConfig);
     });
 
-    it('should list credentials', async () => {
-      const response = { data: [], nextCursor: null };
-      mockAxiosInstance.get.mockResolvedValue({ data: response });
-      
-      const result = await client.listCredentials({ limit: 10 });
-      
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/credentials', { 
-        params: { limit: 10 } 
-      });
-      expect(result).toEqual(response);
+    it('should throw on listCredentials (not supported by n8n API)', async () => {
+      await expect(client.listCredentials({ limit: 10 })).rejects.toThrow(
+        'Listing credentials is not supported by the n8n public API'
+      );
     });
 
-    it('should get credential', async () => {
-      const credential = { id: '123', name: 'Test Credential' };
-      mockAxiosInstance.get.mockResolvedValue({ data: credential });
-      
-      const result = await client.getCredential('123');
-      
-      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/credentials/123');
-      expect(result).toEqual(credential);
+    it('should throw on getCredential (not supported by n8n API)', async () => {
+      await expect(client.getCredential('123')).rejects.toThrow(
+        'Getting credentials by ID is not supported by the n8n public API'
+      );
+    });
+
+    it('should get credential schema', async () => {
+      const schema = { type: 'object', properties: {} };
+      mockAxiosInstance.get.mockResolvedValue({ data: schema });
+
+      const result = await client.getCredentialSchema('httpBasicAuth');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/credentials/schema/httpBasicAuth');
+      expect(result).toEqual(schema);
     });
 
     it('should create credential', async () => {

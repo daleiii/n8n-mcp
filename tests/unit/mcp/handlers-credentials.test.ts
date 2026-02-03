@@ -1,11 +1,13 @@
 /**
  * Unit tests for credential management handlers
- * Tests the 5 credential tools added in this fork:
- * - n8n_list_credentials
- * - n8n_get_credential
- * - n8n_create_credential
- * - n8n_update_credential
- * - n8n_delete_credential
+ * Tests the credential tools available in the n8n public API:
+ * - n8n_get_credential_schema (GET schema for a credential type)
+ * - n8n_create_credential (POST to create)
+ * - n8n_update_credential (PATCH to update)
+ * - n8n_delete_credential (DELETE to remove)
+ *
+ * NOTE: n8n public API does NOT support listing or getting credentials by ID
+ * for security reasons. See: https://docs.n8n.io/api/api-reference/#tag/credential
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -64,8 +66,7 @@ describe('Credential Management Handlers', () => {
 
     // Setup mock API client with credential methods
     mockApiClient = {
-      listCredentials: vi.fn(),
-      getCredential: vi.fn(),
+      getCredentialSchema: vi.fn(),
       createCredential: vi.fn(),
       updateCredential: vi.fn(),
       deleteCredential: vi.fn(),
@@ -93,126 +94,58 @@ describe('Credential Management Handlers', () => {
     vi.clearAllMocks();
   });
 
-  describe('handleListCredentials', () => {
-    it('should list all credentials successfully', async () => {
-      const mockCredentials = [
-        createTestCredential({ id: 'cred-1', name: 'API Key 1' }),
-        createTestCredential({ id: 'cred-2', name: 'OAuth Token' }),
-      ];
-
-      mockApiClient.listCredentials.mockResolvedValue({
-        data: mockCredentials,
-        nextCursor: null,
-      });
-
-      const result = await handlers.handleListCredentials({});
-
-      expect(result.success).toBe(true);
-      expect(result.data.credentials).toBeDefined();
-      expect(result.data.credentials.length).toBe(2);
-      expect(mockApiClient.listCredentials).toHaveBeenCalled();
-    });
-
-    it('should filter credentials by type client-side', async () => {
-      const mockCredentials = [
-        createTestCredential({ id: 'cred-1', type: 'httpBasicAuth' }),
-        createTestCredential({ id: 'cred-2', type: 'oAuth2Api' }),
-      ];
-
-      mockApiClient.listCredentials.mockResolvedValue({
-        data: mockCredentials,
-        nextCursor: null,
-      });
-
-      const result = await handlers.handleListCredentials({ type: 'httpBasicAuth' });
-
-      expect(result.success).toBe(true);
-      // The handler filters client-side after fetching all
-      expect(result.data.credentials.length).toBe(1);
-      expect(result.data.credentials[0].type).toBe('httpBasicAuth');
-    });
-
-    it('should handle empty credentials list', async () => {
-      mockApiClient.listCredentials.mockResolvedValue({
-        data: [],
-        nextCursor: null,
-      });
-
-      const result = await handlers.handleListCredentials({});
-
-      expect(result.success).toBe(true);
-      expect(result.data.credentials).toEqual([]);
-      expect(result.data.returned).toBe(0);
-    });
-
-    it('should strip sensitive data from credentials', async () => {
-      const mockCredentials = [
-        {
-          ...createTestCredential(),
-          data: { apiKey: 'secret-key-123' },
+  describe('handleGetCredentialSchema', () => {
+    it('should get credential schema successfully', async () => {
+      const mockSchema = {
+        additionalProperties: false,
+        type: 'object',
+        properties: {
+          user: { type: 'string' },
+          password: { type: 'string' }
         },
-      ];
+        required: ['user', 'password']
+      };
 
-      mockApiClient.listCredentials.mockResolvedValue({
-        data: mockCredentials,
-        nextCursor: null,
+      mockApiClient.getCredentialSchema.mockResolvedValue(mockSchema);
+
+      const result = await handlers.handleGetCredentialSchema({
+        credentialTypeName: 'httpBasicAuth'
       });
 
-      const result = await handlers.handleListCredentials({});
-
       expect(result.success).toBe(true);
-      // Should not contain the sensitive data field
-      expect(result.data.credentials[0].data).toBeUndefined();
+      expect(result.data.credentialTypeName).toBe('httpBasicAuth');
+      expect(result.data.schema).toEqual(mockSchema);
+      expect(mockApiClient.getCredentialSchema).toHaveBeenCalledWith('httpBasicAuth');
     });
 
-    it('should handle authentication errors', async () => {
-      mockApiClient.listCredentials.mockRejectedValue(
-        new N8nAuthenticationError('Invalid API key')
-      );
-
-      const result = await handlers.handleListCredentials({});
+    it('should handle missing credential type parameter', async () => {
+      const result = await handlers.handleGetCredentialSchema({});
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
     });
 
-    it('should handle API errors', async () => {
-      mockApiClient.listCredentials.mockRejectedValue(
-        new N8nApiError('API error', 500)
+    it('should handle unknown credential type', async () => {
+      mockApiClient.getCredentialSchema.mockRejectedValue(
+        new N8nNotFoundError('Credential type not found')
       );
 
-      const result = await handlers.handleListCredentials({});
-
-      expect(result.success).toBe(false);
-    });
-  });
-
-  describe('handleGetCredential', () => {
-    it('should get a credential by ID', async () => {
-      const mockCredential = createTestCredential();
-
-      mockApiClient.getCredential.mockResolvedValue(mockCredential);
-
-      const result = await handlers.handleGetCredential({ id: 'cred-123' });
-
-      expect(result.success).toBe(true);
-      expect(mockApiClient.getCredential).toHaveBeenCalledWith('cred-123');
-    });
-
-    it('should handle not found errors', async () => {
-      mockApiClient.getCredential.mockRejectedValue(
-        new N8nNotFoundError('Credential not found')
-      );
-
-      const result = await handlers.handleGetCredential({ id: 'non-existent' });
+      const result = await handlers.handleGetCredentialSchema({
+        credentialTypeName: 'unknownType'
+      });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
     });
 
-    it('should handle missing ID parameter', async () => {
-      // The handler uses zod validation which will throw
-      const result = await handlers.handleGetCredential({});
+    it('should handle API errors', async () => {
+      mockApiClient.getCredentialSchema.mockRejectedValue(
+        new N8nApiError('API error', 500)
+      );
+
+      const result = await handlers.handleGetCredentialSchema({
+        credentialTypeName: 'slackApi'
+      });
 
       expect(result.success).toBe(false);
     });
@@ -381,16 +314,20 @@ describe('Credential Management Handlers', () => {
       vi.resetModules();
       const freshHandlers = await import('@/mcp/handlers-n8n-manager');
 
-      const result = await freshHandlers.handleListCredentials({});
+      const result = await freshHandlers.handleGetCredentialSchema({
+        credentialTypeName: 'httpBasicAuth'
+      });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not configured');
     });
 
     it('should handle network errors gracefully', async () => {
-      mockApiClient.listCredentials.mockRejectedValue(new Error('Network error'));
+      mockApiClient.getCredentialSchema.mockRejectedValue(new Error('Network error'));
 
-      const result = await handlers.handleListCredentials({});
+      const result = await handlers.handleGetCredentialSchema({
+        credentialTypeName: 'slackApi'
+      });
 
       expect(result.success).toBe(false);
     });

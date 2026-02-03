@@ -585,47 +585,20 @@ exports.n8nManagementTools = [
         },
     },
     {
-        name: 'n8n_list_credentials',
-        description: `List credentials configured in n8n instance. Returns metadata only (id, name, type, dates) - never returns sensitive credential data. Use for checking available credentials before workflow deployment.`,
+        name: 'n8n_get_credential_schema',
+        description: `Get the data schema for a credential type. Shows required and optional fields needed to create/update credentials of this type. Use this before creating credentials to know what fields are needed.`,
         inputSchema: {
             type: 'object',
             properties: {
-                limit: {
-                    type: 'number',
-                    description: 'Number of credentials to return (1-100, default: 100)'
-                },
-                cursor: {
+                credentialTypeName: {
                     type: 'string',
-                    description: 'Pagination cursor from previous response'
-                },
-                type: {
-                    type: 'string',
-                    description: 'Filter by credential type (e.g., "slackApi", "httpBasicAuth")'
-                }
-            }
-        },
-        annotations: {
-            title: 'List Credentials',
-            readOnlyHint: true,
-            idempotentHint: true,
-            openWorldHint: true,
-        },
-    },
-    {
-        name: 'n8n_get_credential',
-        description: `Get credential metadata by ID. Returns id, name, type, and node access info. Does NOT return sensitive credential data (API keys, passwords, tokens).`,
-        inputSchema: {
-            type: 'object',
-            properties: {
-                id: {
-                    type: 'string',
-                    description: 'Credential ID'
+                    description: 'Credential type name (e.g., "slackApi", "httpBasicAuth", "githubApi")'
                 }
             },
-            required: ['id']
+            required: ['credentialTypeName']
         },
         annotations: {
-            title: 'Get Credential',
+            title: 'Get Credential Schema',
             readOnlyHint: true,
             idempotentHint: true,
             openWorldHint: true,

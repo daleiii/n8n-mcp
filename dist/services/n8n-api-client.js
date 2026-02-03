@@ -286,18 +286,17 @@ class N8nApiClient {
             throw (0, n8n_errors_1.handleN8nApiError)(error);
         }
     }
-    async listCredentials(params = {}) {
-        try {
-            const response = await this.client.get('/credentials', { params });
-            return this.validateListResponse(response.data, 'credentials');
-        }
-        catch (error) {
-            throw (0, n8n_errors_1.handleN8nApiError)(error);
-        }
+    async listCredentials(_params = {}) {
+        throw new n8n_errors_1.N8nApiError('Listing credentials is not supported by the n8n public API. ' +
+            'The API only supports create, update, delete, and schema retrieval for credentials.', 405);
     }
-    async getCredential(id) {
+    async getCredential(_id) {
+        throw new n8n_errors_1.N8nApiError('Getting credentials by ID is not supported by the n8n public API. ' +
+            'The API only supports create, update, delete, and schema retrieval for credentials.', 405);
+    }
+    async getCredentialSchema(credentialTypeName) {
         try {
-            const response = await this.client.get(`/credentials/${id}`);
+            const response = await this.client.get(`/credentials/schema/${credentialTypeName}`);
             return response.data;
         }
         catch (error) {

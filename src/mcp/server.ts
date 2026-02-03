@@ -1331,11 +1331,10 @@ export class N8NDocumentationMCPServer {
         return this.handleRefreshCustomNodes(args.paths);
 
       // Credential Management
-      case 'n8n_list_credentials':
-        return n8nHandlers.handleListCredentials(args, this.instanceContext);
-      case 'n8n_get_credential':
-        this.validateToolParams(name, args, ['id']);
-        return n8nHandlers.handleGetCredential(args, this.instanceContext);
+      // NOTE: n8n public API does NOT support listing or getting credentials by ID (security by design)
+      case 'n8n_get_credential_schema':
+        this.validateToolParams(name, args, ['credentialTypeName']);
+        return n8nHandlers.handleGetCredentialSchema(args, this.instanceContext);
       case 'n8n_create_credential':
         this.validateToolParams(name, args, ['name', 'type', 'data']);
         return n8nHandlers.handleCreateCredential(args, this.instanceContext);

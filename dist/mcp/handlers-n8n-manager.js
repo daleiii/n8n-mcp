@@ -56,8 +56,7 @@ exports.handleDiagnostic = handleDiagnostic;
 exports.handleWorkflowVersions = handleWorkflowVersions;
 exports.handleDeployTemplate = handleDeployTemplate;
 exports.handleTriggerWebhookWorkflow = handleTriggerWebhookWorkflow;
-exports.handleListCredentials = handleListCredentials;
-exports.handleGetCredential = handleGetCredential;
+exports.handleGetCredentialSchema = handleGetCredentialSchema;
 exports.handleCreateCredential = handleCreateCredential;
 exports.handleUpdateCredential = handleUpdateCredential;
 exports.handleDeleteCredential = handleDeleteCredential;
@@ -2028,79 +2027,21 @@ async function handleTriggerWebhookWorkflow(args, context) {
         };
     }
 }
-const listCredentialsSchema = zod_1.z.object({
-    limit: zod_1.z.number().min(1).max(100).optional(),
-    cursor: zod_1.z.string().optional(),
-    type: zod_1.z.string().optional()
+const getCredentialTypeSchemaInput = zod_1.z.object({
+    credentialTypeName: zod_1.z.string()
 });
-async function handleListCredentials(args, context) {
+async function handleGetCredentialSchema(args, context) {
     try {
         const client = ensureApiConfigured(context);
-        const input = listCredentialsSchema.parse(args || {});
-        const response = await client.listCredentials({
-            limit: input.limit || 100,
-            cursor: input.cursor
-        });
-        let credentials = response.data;
-        if (input.type) {
-            credentials = credentials.filter(c => c.type === input.type);
-        }
-        const safeCredentials = credentials.map(cred => ({
-            id: cred.id,
-            name: cred.name,
-            type: cred.type,
-            createdAt: cred.createdAt,
-            updatedAt: cred.updatedAt
-        }));
+        const { credentialTypeName } = getCredentialTypeSchemaInput.parse(args);
+        const schema = await client.getCredentialSchema(credentialTypeName);
         return {
             success: true,
             data: {
-                credentials: safeCredentials,
-                returned: safeCredentials.length,
-                nextCursor: response.nextCursor,
-                hasMore: !!response.nextCursor
-            }
-        };
-    }
-    catch (error) {
-        if (error instanceof zod_1.z.ZodError) {
-            return {
-                success: false,
-                error: 'Invalid input',
-                details: { errors: error.errors }
-            };
-        }
-        if (error instanceof n8n_errors_1.N8nApiError) {
-            return {
-                success: false,
-                error: (0, n8n_errors_1.getUserFriendlyErrorMessage)(error),
-                code: error.code
-            };
-        }
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error occurred'
-        };
-    }
-}
-const getCredentialSchema = zod_1.z.object({
-    id: zod_1.z.string()
-});
-async function handleGetCredential(args, context) {
-    try {
-        const client = ensureApiConfigured(context);
-        const { id } = getCredentialSchema.parse(args);
-        const credential = await client.getCredential(id);
-        return {
-            success: true,
-            data: {
-                id: credential.id,
-                name: credential.name,
-                type: credential.type,
-                nodesAccess: credential.nodesAccess,
-                createdAt: credential.createdAt,
-                updatedAt: credential.updatedAt
-            }
+                credentialTypeName,
+                schema
+            },
+            message: `Schema for credential type "${credentialTypeName}" retrieved successfully.`
         };
     }
     catch (error) {
@@ -2242,13 +2183,6 @@ async function handleDeleteCredential(args, context) {
     try {
         const client = ensureApiConfigured(context);
         const { id } = deleteCredentialSchema.parse(args);
-        let credentialName = id;
-        try {
-            const credential = await client.getCredential(id);
-            credentialName = credential.name || id;
-        }
-        catch {
-        }
         await client.deleteCredential(id);
         return {
             success: true,
@@ -2256,7 +2190,7 @@ async function handleDeleteCredential(args, context) {
                 id,
                 deleted: true
             },
-            message: `Credential "${credentialName}" deleted successfully.`
+            message: `Credential with ID "${id}" deleted successfully.`
         };
     }
     catch (error) {

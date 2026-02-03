@@ -2676,100 +2676,32 @@ export async function handleTriggerWebhookWorkflow(args: unknown, context?: Inst
 // CREDENTIAL MANAGEMENT HANDLERS
 // ========================================================================
 
-const listCredentialsSchema = z.object({
-  limit: z.number().min(1).max(100).optional(),
-  cursor: z.string().optional(),
-  type: z.string().optional()
+// NOTE: n8n public API does NOT support listing or getting credentials by ID (security by design)
+// Only create, update, delete, and schema retrieval are available
+// See: https://docs.n8n.io/api/api-reference/#tag/credential
+
+const getCredentialTypeSchemaInput = z.object({
+  credentialTypeName: z.string()
 });
 
 /**
- * List credentials from n8n instance.
- * Returns metadata only - never includes sensitive credential data.
+ * Get the schema for a credential type.
+ * Shows required and optional fields for creating/updating credentials.
  */
-export async function handleListCredentials(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
+export async function handleGetCredentialSchema(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
   try {
     const client = ensureApiConfigured(context);
-    const input = listCredentialsSchema.parse(args || {});
+    const { credentialTypeName } = getCredentialTypeSchemaInput.parse(args);
 
-    const response = await client.listCredentials({
-      limit: input.limit || 100,
-      cursor: input.cursor
-    });
-
-    // Filter by type if specified
-    let credentials = response.data;
-    if (input.type) {
-      credentials = credentials.filter(c => c.type === input.type);
-    }
-
-    // Return only metadata - explicitly exclude data field
-    const safeCredentials = credentials.map(cred => ({
-      id: cred.id,
-      name: cred.name,
-      type: cred.type,
-      createdAt: cred.createdAt,
-      updatedAt: cred.updatedAt
-    }));
+    const schema = await client.getCredentialSchema(credentialTypeName);
 
     return {
       success: true,
       data: {
-        credentials: safeCredentials,
-        returned: safeCredentials.length,
-        nextCursor: response.nextCursor,
-        hasMore: !!response.nextCursor
-      }
-    };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return {
-        success: false,
-        error: 'Invalid input',
-        details: { errors: error.errors }
-      };
-    }
-
-    if (error instanceof N8nApiError) {
-      return {
-        success: false,
-        error: getUserFriendlyErrorMessage(error),
-        code: error.code
-      };
-    }
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
-    };
-  }
-}
-
-const getCredentialSchema = z.object({
-  id: z.string()
-});
-
-/**
- * Get credential metadata by ID.
- * Returns metadata and node access info - never includes sensitive data.
- */
-export async function handleGetCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
-  try {
-    const client = ensureApiConfigured(context);
-    const { id } = getCredentialSchema.parse(args);
-
-    const credential = await client.getCredential(id);
-
-    // Return metadata only - explicitly exclude data field
-    return {
-      success: true,
-      data: {
-        id: credential.id,
-        name: credential.name,
-        type: credential.type,
-        nodesAccess: credential.nodesAccess,
-        createdAt: credential.createdAt,
-        updatedAt: credential.updatedAt
-      }
+        credentialTypeName,
+        schema
+      },
+      message: `Schema for credential type "${credentialTypeName}" retrieved successfully.`
     };
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -2929,20 +2861,12 @@ const deleteCredentialSchema = z.object({
 
 /**
  * Delete a credential permanently.
+ * Note: n8n API doesn't support getting credential by ID, so we can't fetch the name.
  */
 export async function handleDeleteCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
   try {
     const client = ensureApiConfigured(context);
     const { id } = deleteCredentialSchema.parse(args);
-
-    // Get credential name before deletion for the response message
-    let credentialName = id;
-    try {
-      const credential = await client.getCredential(id);
-      credentialName = credential.name || id;
-    } catch {
-      // Continue with deletion even if we can't get the name
-    }
 
     await client.deleteCredential(id);
 
@@ -2952,7 +2876,7 @@ export async function handleDeleteCredential(args: unknown, context?: InstanceCo
         id,
         deleted: true
       },
-      message: `Credential "${credentialName}" deleted successfully.`
+      message: `Credential with ID "${id}" deleted successfully.`
     };
   } catch (error) {
     if (error instanceof z.ZodError) {

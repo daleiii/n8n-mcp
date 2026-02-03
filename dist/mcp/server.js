@@ -981,11 +981,9 @@ class N8NDocumentationMCPServer {
                 return n8nHandlers.handleDeployTemplate(args, this.templateService, this.repository, this.instanceContext);
             case 'n8n_refresh_custom_nodes':
                 return this.handleRefreshCustomNodes(args.paths);
-            case 'n8n_list_credentials':
-                return n8nHandlers.handleListCredentials(args, this.instanceContext);
-            case 'n8n_get_credential':
-                this.validateToolParams(name, args, ['id']);
-                return n8nHandlers.handleGetCredential(args, this.instanceContext);
+            case 'n8n_get_credential_schema':
+                this.validateToolParams(name, args, ['credentialTypeName']);
+                return n8nHandlers.handleGetCredentialSchema(args, this.instanceContext);
             case 'n8n_create_credential':
                 this.validateToolParams(name, args, ['name', 'type', 'data']);
                 return n8nHandlers.handleCreateCredential(args, this.instanceContext);
