@@ -252,9 +252,22 @@ git push origin main
 ```
 
 **Our fork-specific additions:**
-- Credential management tools (5 tools in `tools-n8n-manager.ts`, `handlers-n8n-manager.ts`)
+- Credential management tools (4 tools: schema, create, update, delete - note: n8n API doesn't support list/get)
 - Custom node support (`node-loader.ts`, `schema.sql`, `refresh-custom-nodes.ts`)
 - Documentation in `tool-docs/credentials/`
+
+**Database Schema Changes:**
+If you modify the database schema (`src/database/schema.sql`), you must rebuild `data/nodes.db` using the GitHub Action:
+1. Push your schema changes to the repo
+2. Go to Actions → "Rebuild Node Database" → Run workflow
+3. The workflow will rebuild the database with the new schema and commit it
+
+This is required because:
+- The pre-built `nodes.db` is included in Docker images
+- Local rebuilds require `better-sqlite3` which needs specific Node versions (≤24)
+- The GitHub Action uses Node 20 which is compatible with `better-sqlite3`
+
+Do NOT try to rebuild locally with Node 25+ as `better-sqlite3` won't compile.
 
 **Conflict-prone files when merging:**
 - `src/mcp/server.ts` - We added handler cases
