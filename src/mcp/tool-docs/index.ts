@@ -7,7 +7,8 @@ import { validateNodeDoc, validateWorkflowDoc } from './validation';
 import { getTemplateDoc, searchTemplatesDoc } from './templates';
 import {
   toolsDocumentationDoc,
-  n8nHealthCheckDoc
+  n8nHealthCheckDoc,
+  n8nRefreshCustomNodesDoc
 } from './system';
 import { aiAgentsGuide } from './guides';
 import {
@@ -24,12 +25,20 @@ import {
   n8nWorkflowVersionsDoc,
   n8nDeployTemplateDoc
 } from './workflow_management';
+import {
+  n8nListCredentialsDoc,
+  n8nGetCredentialDoc,
+  n8nCreateCredentialDoc,
+  n8nUpdateCredentialDoc,
+  n8nDeleteCredentialDoc
+} from './credentials';
 
 // Combine all tool documentations into a single object
 export const toolsDocumentation: Record<string, ToolDocumentation> = {
   // System tools
   tools_documentation: toolsDocumentationDoc,
   n8n_health_check: n8nHealthCheckDoc,
+  n8n_refresh_custom_nodes: n8nRefreshCustomNodesDoc,
 
   // Guides
   ai_agents_guide: aiAgentsGuide,
@@ -60,7 +69,14 @@ export const toolsDocumentation: Record<string, ToolDocumentation> = {
   n8n_test_workflow: n8nTestWorkflowDoc,
   n8n_executions: n8nExecutionsDoc,
   n8n_workflow_versions: n8nWorkflowVersionsDoc,
-  n8n_deploy_template: n8nDeployTemplateDoc
+  n8n_deploy_template: n8nDeployTemplateDoc,
+
+  // Credential Management tools (n8n API)
+  n8n_list_credentials: n8nListCredentialsDoc,
+  n8n_get_credential: n8nGetCredentialDoc,
+  n8n_create_credential: n8nCreateCredentialDoc,
+  n8n_update_credential: n8nUpdateCredentialDoc,
+  n8n_delete_credential: n8nDeleteCredentialDoc
 };
 
 // Re-export types

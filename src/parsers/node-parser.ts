@@ -32,6 +32,9 @@ export interface ParsedNode {
   isToolVariant?: boolean;      // True for *Tool variants (e.g., supabaseTool)
   toolVariantOf?: string;       // For Tool variants: base node type (e.g., nodes-base.supabase)
   hasToolVariant?: boolean;     // For base nodes: true if Tool variant exists
+  // Custom node source tracking (v2.34.0)
+  sourceType?: 'official' | 'community' | 'custom';
+  sourcePath?: string;          // Filesystem path for custom nodes
 }
 
 export class NodeParser {

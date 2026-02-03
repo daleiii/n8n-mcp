@@ -2671,3 +2671,309 @@ export async function handleTriggerWebhookWorkflow(args: unknown, context?: Inst
     };
   }
 }
+
+// ========================================================================
+// CREDENTIAL MANAGEMENT HANDLERS
+// ========================================================================
+
+const listCredentialsSchema = z.object({
+  limit: z.number().min(1).max(100).optional(),
+  cursor: z.string().optional(),
+  type: z.string().optional()
+});
+
+/**
+ * List credentials from n8n instance.
+ * Returns metadata only - never includes sensitive credential data.
+ */
+export async function handleListCredentials(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
+  try {
+    const client = ensureApiConfigured(context);
+    const input = listCredentialsSchema.parse(args || {});
+
+    const response = await client.listCredentials({
+      limit: input.limit || 100,
+      cursor: input.cursor
+    });
+
+    // Filter by type if specified
+    let credentials = response.data;
+    if (input.type) {
+      credentials = credentials.filter(c => c.type === input.type);
+    }
+
+    // Return only metadata - explicitly exclude data field
+    const safeCredentials = credentials.map(cred => ({
+      id: cred.id,
+      name: cred.name,
+      type: cred.type,
+      createdAt: cred.createdAt,
+      updatedAt: cred.updatedAt
+    }));
+
+    return {
+      success: true,
+      data: {
+        credentials: safeCredentials,
+        returned: safeCredentials.length,
+        nextCursor: response.nextCursor,
+        hasMore: !!response.nextCursor
+      }
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: 'Invalid input',
+        details: { errors: error.errors }
+      };
+    }
+
+    if (error instanceof N8nApiError) {
+      return {
+        success: false,
+        error: getUserFriendlyErrorMessage(error),
+        code: error.code
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
+const getCredentialSchema = z.object({
+  id: z.string()
+});
+
+/**
+ * Get credential metadata by ID.
+ * Returns metadata and node access info - never includes sensitive data.
+ */
+export async function handleGetCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
+  try {
+    const client = ensureApiConfigured(context);
+    const { id } = getCredentialSchema.parse(args);
+
+    const credential = await client.getCredential(id);
+
+    // Return metadata only - explicitly exclude data field
+    return {
+      success: true,
+      data: {
+        id: credential.id,
+        name: credential.name,
+        type: credential.type,
+        nodesAccess: credential.nodesAccess,
+        createdAt: credential.createdAt,
+        updatedAt: credential.updatedAt
+      }
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: 'Invalid input',
+        details: { errors: error.errors }
+      };
+    }
+
+    if (error instanceof N8nApiError) {
+      return {
+        success: false,
+        error: getUserFriendlyErrorMessage(error),
+        code: error.code
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
+const createCredentialSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  data: z.record(z.unknown()),
+  nodesAccess: z.array(z.object({
+    nodeType: z.string()
+  })).optional()
+});
+
+/**
+ * Create a new credential.
+ * Accepts sensitive data - ensure secure transmission.
+ */
+export async function handleCreateCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
+  try {
+    const client = ensureApiConfigured(context);
+    const input = createCredentialSchema.parse(args);
+
+    const credential = await client.createCredential({
+      name: input.name,
+      type: input.type,
+      data: input.data,
+      nodesAccess: input.nodesAccess
+    });
+
+    // Return created credential metadata - exclude data
+    return {
+      success: true,
+      data: {
+        id: credential.id,
+        name: credential.name,
+        type: credential.type,
+        createdAt: credential.createdAt
+      },
+      message: `Credential "${credential.name}" created successfully.`
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: 'Invalid input',
+        details: { errors: error.errors }
+      };
+    }
+
+    if (error instanceof N8nApiError) {
+      return {
+        success: false,
+        error: getUserFriendlyErrorMessage(error),
+        code: error.code
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
+const updateCredentialSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  type: z.string().optional(),
+  data: z.record(z.unknown()).optional(),
+  nodesAccess: z.array(z.object({
+    nodeType: z.string()
+  })).optional()
+});
+
+/**
+ * Update an existing credential.
+ * Can update name, type, data, or nodesAccess.
+ */
+export async function handleUpdateCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
+  try {
+    const client = ensureApiConfigured(context);
+    const input = updateCredentialSchema.parse(args);
+
+    const updatePayload: Record<string, unknown> = {};
+    if (input.name !== undefined) updatePayload.name = input.name;
+    if (input.type !== undefined) updatePayload.type = input.type;
+    if (input.data !== undefined) updatePayload.data = input.data;
+    if (input.nodesAccess !== undefined) updatePayload.nodesAccess = input.nodesAccess;
+
+    if (Object.keys(updatePayload).length === 0) {
+      return {
+        success: false,
+        error: 'No update fields provided. Specify name, type, data, or nodesAccess.'
+      };
+    }
+
+    const credential = await client.updateCredential(input.id, updatePayload);
+
+    return {
+      success: true,
+      data: {
+        id: credential.id,
+        name: credential.name,
+        type: credential.type,
+        updatedAt: credential.updatedAt
+      },
+      message: `Credential "${credential.name}" updated successfully.`
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: 'Invalid input',
+        details: { errors: error.errors }
+      };
+    }
+
+    if (error instanceof N8nApiError) {
+      return {
+        success: false,
+        error: getUserFriendlyErrorMessage(error),
+        code: error.code
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
+const deleteCredentialSchema = z.object({
+  id: z.string()
+});
+
+/**
+ * Delete a credential permanently.
+ */
+export async function handleDeleteCredential(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
+  try {
+    const client = ensureApiConfigured(context);
+    const { id } = deleteCredentialSchema.parse(args);
+
+    // Get credential name before deletion for the response message
+    let credentialName = id;
+    try {
+      const credential = await client.getCredential(id);
+      credentialName = credential.name || id;
+    } catch {
+      // Continue with deletion even if we can't get the name
+    }
+
+    await client.deleteCredential(id);
+
+    return {
+      success: true,
+      data: {
+        id,
+        deleted: true
+      },
+      message: `Credential "${credentialName}" deleted successfully.`
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: 'Invalid input',
+        details: { errors: error.errors }
+      };
+    }
+
+    if (error instanceof N8nApiError) {
+      return {
+        success: false,
+        error: getUserFriendlyErrorMessage(error),
+        code: error.code
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}

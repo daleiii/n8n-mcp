@@ -35,6 +35,15 @@ async function rebuild() {
   // Load all nodes
   const nodes = await loader.loadAllNodes();
   console.log(`📦 Loaded ${nodes.length} nodes from packages\n`);
+
+  // Load custom nodes if configured
+  const customNodePaths = parseCustomNodePaths(process.env.CUSTOM_NODE_PATHS);
+  if (customNodePaths.length > 0) {
+    console.log(`📦 Loading custom nodes from ${customNodePaths.length} paths...`);
+    const customNodes = await loader.loadCustomNodes(customNodePaths);
+    console.log(`   Found ${customNodes.length} custom nodes\n`);
+    nodes.push(...customNodes);
+  }
   
   // Statistics
   const stats = {
@@ -46,17 +55,24 @@ async function rebuild() {
     withProperties: 0,
     withOperations: 0,
     withDocs: 0,
-    toolVariants: 0
+    toolVariants: 0,
+    customNodes: 0
   };
   
   // Process each node (documentation fetching must be outside transaction due to async)
   console.log('🔄 Processing nodes...');
   const processedNodes: Array<{ parsed: ParsedNode; docs: string | undefined; nodeName: string }> = [];
-  
-  for (const { packageName, nodeName, NodeClass } of nodes) {
+
+  for (const { packageName, nodeName, NodeClass, sourceType, sourcePath } of nodes) {
     try {
       // Parse node
       const parsed = parser.parse(NodeClass, packageName);
+
+      // Set source type and path for custom nodes
+      parsed.sourceType = sourceType || 'official';
+      if (sourcePath) {
+        parsed.sourcePath = sourcePath;
+      }
 
       // Validate parsed data
       if (!parsed.nodeType || !parsed.displayName) {
@@ -114,8 +130,10 @@ async function rebuild() {
       if (parsed.properties.length > 0) stats.withProperties++;
       if (parsed.operations.length > 0) stats.withOperations++;
       if (docs) stats.withDocs++;
-      
-      console.log(`✅ ${parsed.nodeType} [Props: ${parsed.properties.length}, Ops: ${parsed.operations.length}]`);
+      if (parsed.sourceType === 'custom') stats.customNodes++;
+
+      const sourceLabel = parsed.sourceType === 'custom' ? ' [CUSTOM]' : '';
+      console.log(`✅ ${parsed.nodeType}${sourceLabel} [Props: ${parsed.properties.length}, Ops: ${parsed.operations.length}]`);
     } catch (error) {
       stats.failed++;
       const errorMessage = (error as Error).message;
@@ -153,6 +171,9 @@ async function rebuild() {
   console.log(`   With Properties: ${stats.withProperties}`);
   console.log(`   With Operations: ${stats.withOperations}`);
   console.log(`   With Documentation: ${stats.withDocs}`);
+  if (stats.customNodes > 0) {
+    console.log(`   Custom Nodes: ${stats.customNodes}`);
+  }
   
   // Sanitize templates if they exist
   console.log('\n🧹 Checking for templates to sanitize...');
@@ -278,6 +299,24 @@ function validateDatabase(repository: NodeRepository): { passed: boolean; issues
     passed: issues.length === 0,
     issues
   };
+}
+
+/**
+ * Parse CUSTOM_NODE_PATHS environment variable into an array of paths.
+ * Supports comma-separated paths and paths with wildcards.
+ * Examples:
+ *   "/path/to/n8n-nodes-foo,/path/to/n8n-nodes-bar"
+ *   "/path/to/custom-nodes/*"
+ */
+function parseCustomNodePaths(envValue: string | undefined): string[] {
+  if (!envValue || envValue.trim() === '') {
+    return [];
+  }
+
+  return envValue
+    .split(',')
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
 }
 
 // Run if called directly

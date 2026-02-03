@@ -59,8 +59,8 @@ export const n8nDocumentationToolsFinal: ToolDefinition[] = [
         },
         source: {
           type: 'string',
-          enum: ['all', 'core', 'community', 'verified'],
-          description: 'Filter by node source: all=everything (default), core=n8n base nodes, community=community nodes, verified=verified community nodes only',
+          enum: ['all', 'core', 'community', 'verified', 'custom'],
+          description: 'Filter by node source: all=everything (default), core=n8n base nodes, community=community nodes, verified=verified community nodes only, custom=local custom nodes',
           default: 'all',
         },
       },
@@ -428,6 +428,25 @@ export const n8nDocumentationToolsFinal: ToolDefinition[] = [
       title: 'Validate Workflow',
       readOnlyHint: true,
       idempotentHint: true,
+    },
+  },
+  {
+    name: 'n8n_refresh_custom_nodes',
+    description: `Reload custom nodes from configured paths without full database rebuild. Use this after modifying custom node code or adding new custom node packages. Returns summary of deleted and loaded nodes.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional: specific paths to reload. If empty, reloads all configured CUSTOM_NODE_PATHS.',
+        },
+      },
+    },
+    annotations: {
+      title: 'Refresh Custom Nodes',
+      readOnlyHint: false,
+      idempotentHint: false,
     },
   },
 ];

@@ -27,6 +27,7 @@ import { WorkflowValidator } from '../services/workflow-validator';
 import { isN8nApiConfigured } from '../config/n8n-api';
 import * as n8nHandlers from './handlers-n8n-manager';
 import { handleUpdatePartialWorkflow } from './handlers-workflow-diff';
+import { refreshCustomNodes, parseCustomNodePaths } from '../scripts/refresh-custom-nodes';
 import { getToolDocumentation, getToolsOverview } from './tools-documentation';
 import { PROJECT_VERSION } from '../utils/version';
 import { getNodeTypeAlternatives, getWorkflowNodeType } from '../utils/node-utils';
@@ -953,6 +954,22 @@ export class N8NDocumentationMCPServer {
           ? { valid: true, errors: [] }
           : { valid: false, errors: [{ field: 'templateId', message: 'templateId is required' }] };
         break;
+      case 'n8n_list_credentials':
+        // No required parameters
+        validationResult = { valid: true, errors: [] };
+        break;
+      case 'n8n_get_credential':
+      case 'n8n_delete_credential':
+        validationResult = ToolValidation.validateCredentialId(args);
+        break;
+      case 'n8n_create_credential':
+        validationResult = args.name && args.type && args.data
+          ? { valid: true, errors: [] }
+          : { valid: false, errors: [{ field: 'input', message: 'name, type, and data are required' }] };
+        break;
+      case 'n8n_update_credential':
+        validationResult = ToolValidation.validateCredentialId(args);
+        break;
       default:
         // For tools not yet migrated to schema validation, use basic validation
         return this.validateToolParamsBasic(toolName, args, legacyRequiredParams || []);
@@ -1311,6 +1328,25 @@ export class N8NDocumentationMCPServer {
         if (!this.repository) throw new Error('Repository not initialized');
         return n8nHandlers.handleDeployTemplate(args, this.templateService, this.repository, this.instanceContext);
 
+      case 'n8n_refresh_custom_nodes':
+        return this.handleRefreshCustomNodes(args.paths);
+
+      // Credential Management
+      case 'n8n_list_credentials':
+        return n8nHandlers.handleListCredentials(args, this.instanceContext);
+      case 'n8n_get_credential':
+        this.validateToolParams(name, args, ['id']);
+        return n8nHandlers.handleGetCredential(args, this.instanceContext);
+      case 'n8n_create_credential':
+        this.validateToolParams(name, args, ['name', 'type', 'data']);
+        return n8nHandlers.handleCreateCredential(args, this.instanceContext);
+      case 'n8n_update_credential':
+        this.validateToolParams(name, args, ['id']);
+        return n8nHandlers.handleUpdateCredential(args, this.instanceContext);
+      case 'n8n_delete_credential':
+        this.validateToolParams(name, args, ['id']);
+        return n8nHandlers.handleDeleteCredential(args, this.instanceContext);
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -1464,7 +1500,7 @@ export class N8NDocumentationMCPServer {
       mode?: 'OR' | 'AND' | 'FUZZY';
       includeSource?: boolean;
       includeExamples?: boolean;
-      source?: 'all' | 'core' | 'community' | 'verified';
+      source?: 'all' | 'core' | 'community' | 'verified' | 'custom';
     }
   ): Promise<any> {
     await this.ensureInitialized();
@@ -1506,7 +1542,7 @@ export class N8NDocumentationMCPServer {
     options?: {
       includeSource?: boolean;
       includeExamples?: boolean;
-      source?: 'all' | 'core' | 'community' | 'verified';
+      source?: 'all' | 'core' | 'community' | 'verified' | 'custom';
     }
   ): Promise<any> {
     if (!this.db) throw new Error('Database not initialized');
@@ -1552,13 +1588,17 @@ export class N8NDocumentationMCPServer {
       const sourceValue = options?.source || 'all';
       switch (sourceValue) {
         case 'core':
-          sourceFilter = 'AND n.is_community = 0';
+          // Official nodes: not community and not custom
+          sourceFilter = "AND n.is_community = 0 AND (n.source_type IS NULL OR n.source_type = 'official')";
           break;
         case 'community':
           sourceFilter = 'AND n.is_community = 1';
           break;
         case 'verified':
           sourceFilter = 'AND n.is_community = 1 AND n.is_verified = 1';
+          break;
+        case 'custom':
+          sourceFilter = "AND n.source_type = 'custom'";
           break;
         // 'all' - no filter
       }
@@ -1635,6 +1675,14 @@ export class N8NDocumentationMCPServer {
             }
             if ((node as any).npm_downloads) {
               nodeResult.npmDownloads = (node as any).npm_downloads;
+            }
+          }
+
+          // Add custom node metadata
+          if ((node as any).source_type === 'custom') {
+            nodeResult.isCustom = true;
+            if ((node as any).source_path) {
+              nodeResult.sourcePath = (node as any).source_path;
             }
           }
 
@@ -1858,7 +1906,7 @@ export class N8NDocumentationMCPServer {
     options?: {
       includeSource?: boolean;
       includeExamples?: boolean;
-      source?: 'all' | 'core' | 'community' | 'verified';
+      source?: 'all' | 'core' | 'community' | 'verified' | 'custom';
     }
   ): Promise<any> {
     if (!this.db) throw new Error('Database not initialized');
@@ -1868,13 +1916,17 @@ export class N8NDocumentationMCPServer {
     const sourceValue = options?.source || 'all';
     switch (sourceValue) {
       case 'core':
-        sourceFilter = 'AND is_community = 0';
+        // Official nodes: not community and not custom
+        sourceFilter = "AND is_community = 0 AND (source_type IS NULL OR source_type = 'official')";
         break;
       case 'community':
         sourceFilter = 'AND is_community = 1';
         break;
       case 'verified':
         sourceFilter = 'AND is_community = 1 AND is_verified = 1';
+        break;
+      case 'custom':
+        sourceFilter = "AND source_type = 'custom'";
         break;
       // 'all' - no filter
     }
@@ -1914,6 +1966,14 @@ export class N8NDocumentationMCPServer {
             }
             if ((node as any).npm_downloads) {
               nodeResult.npmDownloads = (node as any).npm_downloads;
+            }
+          }
+
+          // Add custom node metadata
+          if ((node as any).source_type === 'custom') {
+            nodeResult.isCustom = true;
+            if ((node as any).source_path) {
+              nodeResult.sourcePath = (node as any).source_path;
             }
           }
 
@@ -2000,6 +2060,14 @@ export class N8NDocumentationMCPServer {
           }
           if ((node as any).npm_downloads) {
             nodeResult.npmDownloads = (node as any).npm_downloads;
+          }
+        }
+
+        // Add custom node metadata
+        if ((node as any).source_type === 'custom') {
+          nodeResult.isCustom = true;
+          if ((node as any).source_path) {
+            nodeResult.sourcePath = (node as any).source_path;
           }
         }
 
@@ -3477,8 +3545,52 @@ Full documentation is being prepared. For now, use get_node_essentials for confi
     if (!topic || topic === 'overview') {
       return getToolsOverview(depth);
     }
-    
+
     return getToolDocumentation(topic, depth);
+  }
+
+  /**
+   * Handle refresh custom nodes request (v2.34.0)
+   * Reloads custom nodes from configured paths without full database rebuild
+   */
+  private async handleRefreshCustomNodes(paths?: string[]): Promise<any> {
+    try {
+      // Use provided paths or fall back to environment variable
+      const customPaths = paths && paths.length > 0
+        ? paths
+        : parseCustomNodePaths(process.env.CUSTOM_NODE_PATHS);
+
+      if (customPaths.length === 0) {
+        return {
+          success: false,
+          message: 'No custom node paths configured. Set CUSTOM_NODE_PATHS environment variable or provide paths parameter.',
+          deleted: 0,
+          loaded: 0,
+          errors: []
+        };
+      }
+
+      const result = await refreshCustomNodes(customPaths);
+
+      return {
+        success: result.errors.length === 0,
+        message: result.loaded > 0
+          ? `Successfully refreshed ${result.loaded} custom nodes`
+          : 'No custom nodes found in the specified paths',
+        deleted: result.deleted,
+        loaded: result.loaded,
+        paths: customPaths,
+        errors: result.errors
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to refresh custom nodes: ${(error as Error).message}`,
+        deleted: 0,
+        loaded: 0,
+        errors: [(error as Error).message]
+      };
+    }
   }
 
   // Add connect method to accept any transport

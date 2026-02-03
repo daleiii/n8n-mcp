@@ -297,6 +297,13 @@ export class ToolValidation {
   }
 
   /**
+   * Validate parameters for n8n credential operations
+   */
+  static validateCredentialId(args: any): ValidationResult {
+    return Validator.validateString(args.id, 'id');
+  }
+
+  /**
    * Validate parameters for n8n_create_workflow tool
    */
   static validateCreateWorkflow(args: any): ValidationResult {

@@ -17,6 +17,14 @@ export interface CommunityNodeFields {
   communityFetchedAt?: string;
 }
 
+/**
+ * Custom node source tracking fields (v2.34.0)
+ */
+export interface CustomNodeFields {
+  sourceType?: 'official' | 'community' | 'custom';
+  sourcePath?: string;
+}
+
 export class NodeRepository {
   private db: DatabaseAdapter;
   
@@ -31,9 +39,9 @@ export class NodeRepository {
   
   /**
    * Save node with proper JSON serialization
-   * Supports both core and community nodes via optional community fields
+   * Supports core, community, and custom nodes via optional fields
    */
-  saveNode(node: ParsedNode & Partial<CommunityNodeFields>): void {
+  saveNode(node: ParsedNode & Partial<CommunityNodeFields> & Partial<CustomNodeFields>): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO nodes (
         node_type, package_name, display_name, description,
@@ -43,8 +51,9 @@ export class NodeRepository {
         properties_schema, operations, credentials_required,
         outputs, output_names,
         is_community, is_verified, author_name, author_github_url,
-        npm_package_name, npm_version, npm_downloads, community_fetched_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        npm_package_name, npm_version, npm_downloads, community_fetched_at,
+        source_type, source_path
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -76,7 +85,10 @@ export class NodeRepository {
       node.npmPackageName || null,
       node.npmVersion || null,
       node.npmDownloads || 0,
-      node.communityFetchedAt || null
+      node.communityFetchedAt || null,
+      // Custom node fields (v2.34.0)
+      node.sourceType || 'official',
+      node.sourcePath || null
     );
   }
   
@@ -369,6 +381,9 @@ export class NodeRepository {
         ? this.safeJsonParse(row.ai_documentation_summary, null)
         : null,
       aiSummaryGeneratedAt: row.ai_summary_generated_at || null,
+      // Custom node fields (v2.34.0)
+      sourceType: row.source_type || 'official',
+      sourcePath: row.source_path || null,
     };
   }
 
@@ -666,6 +681,68 @@ export class NodeRepository {
       'DELETE FROM nodes WHERE is_community = 1'
     ).run();
     return result.changes;
+  }
+
+  // ========================================
+  // Custom Node Methods (v2.34.0)
+  // ========================================
+
+  /**
+   * Get all custom nodes
+   */
+  getCustomNodes(): any[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM nodes WHERE source_type = 'custom'
+      ORDER BY display_name
+    `).all() as any[];
+    return rows.map(row => this.parseNodeRow(row));
+  }
+
+  /**
+   * Delete all custom nodes (for refresh)
+   */
+  deleteCustomNodes(): number {
+    const result = this.db.prepare(
+      "DELETE FROM nodes WHERE source_type = 'custom'"
+    ).run();
+    return result.changes;
+  }
+
+  /**
+   * Get nodes by source type
+   */
+  getNodesBySourceType(sourceType: 'official' | 'community' | 'custom'): any[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM nodes WHERE source_type = ?
+      ORDER BY display_name
+    `).all(sourceType) as any[];
+    return rows.map(row => this.parseNodeRow(row));
+  }
+
+  /**
+   * Get custom node statistics
+   */
+  getCustomNodeStats(): { total: number; byPath: Map<string, number> } {
+    const totalResult = this.db.prepare(
+      "SELECT COUNT(*) as count FROM nodes WHERE source_type = 'custom'"
+    ).get() as any;
+
+    const byPathRows = this.db.prepare(`
+      SELECT source_path, COUNT(*) as count
+      FROM nodes
+      WHERE source_type = 'custom' AND source_path IS NOT NULL
+      GROUP BY source_path
+    `).all() as any[];
+
+    const byPath = new Map<string, number>();
+    for (const row of byPathRows) {
+      byPath.set(row.source_path, row.count);
+    }
+
+    return {
+      total: totalResult.count,
+      byPath
+    };
   }
 
   // ========================================

@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS nodes (
   npm_readme TEXT,                    -- Raw README markdown from npm registry
   ai_documentation_summary TEXT,      -- AI-generated structured summary (JSON)
   ai_summary_generated_at DATETIME,   -- When the AI summary was generated
+  -- Custom node fields (v2.34.0)
+  source_type TEXT DEFAULT 'official' CHECK(source_type IN ('official', 'community', 'custom')),
+  source_path TEXT,                   -- Filesystem path for custom nodes
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -47,6 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_community ON nodes(is_community);
 CREATE INDEX IF NOT EXISTS idx_verified ON nodes(is_verified);
 CREATE INDEX IF NOT EXISTS idx_npm_downloads ON nodes(npm_downloads);
 CREATE INDEX IF NOT EXISTS idx_npm_package ON nodes(npm_package_name);
+-- Custom node indexes
+CREATE INDEX IF NOT EXISTS idx_source_type ON nodes(source_type);
 
 -- FTS5 full-text search index for nodes
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(

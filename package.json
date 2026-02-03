@@ -1,6 +1,6 @@
 {
   "name": "n8n-mcp",
-  "version": "2.33.5",
+  "version": "2.33.5-fork.1",
   "description": "Integration between n8n workflow automation and Model Context Protocol (MCP)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,6 +18,7 @@
     "build": "tsc -p tsconfig.build.json",
     "rebuild": "node dist/scripts/rebuild.js",
     "rebuild:optimized": "node dist/scripts/rebuild-optimized.js",
+    "refresh:custom": "node dist/scripts/refresh-custom-nodes.js",
     "validate": "node dist/scripts/validate.js",
     "test-nodes": "node dist/scripts/test-nodes.js",
     "start": "node dist/mcp/index.js",

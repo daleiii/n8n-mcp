@@ -958,7 +958,7 @@ Once connected, Claude can use these powerful tools:
   - `searchMode: 'by_metadata'` - Filter by `complexity`, `requiredService`, `targetAudience`
 - **`get_template`** - Get complete workflow JSON (modes: nodes_only, structure, full)
 
-### n8n Management Tools (13 tools - Requires API Configuration)
+### n8n Management Tools (18 tools - Requires API Configuration)
 These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 
 #### Workflow Management
@@ -987,8 +987,16 @@ These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
   - `action: 'get'` - Get execution details by ID
   - `action: 'delete'` - Delete execution records
 
+#### Credential Management
+- **`n8n_list_credentials`** - List credentials (metadata only, never sensitive data)
+- **`n8n_get_credential`** - Get credential metadata by ID
+- **`n8n_create_credential`** - Create new credential with name, type, and data
+- **`n8n_update_credential`** - Update credential (rotate keys, rename)
+- **`n8n_delete_credential`** - Delete credential permanently
+
 #### System Tools
 - **`n8n_health_check`** - Check n8n API connectivity and features
+- **`n8n_refresh_custom_nodes`** - Reload custom nodes without full rebuild
 
 ### Example Usage
 
@@ -1057,6 +1065,59 @@ search_templates({
   searchMode: "by_task",
   task: "webhook_processing"
 })
+```
+
+## 🔌 Custom Node Support
+
+Load custom n8n nodes from local file paths for unverified/private community nodes or local packages.
+
+### Configuration
+
+```bash
+# In .env or environment variables
+CUSTOM_NODE_PATHS=/path/to/custom-nodes/*
+```
+
+### Docker Setup (Shared Volume)
+
+When running n8n and n8n-mcp in separate containers, mount the same custom nodes directory:
+
+```yaml
+# docker-compose.yml
+services:
+  n8n:
+    image: n8nio/n8n
+    volumes:
+      - ./custom-nodes:/home/node/.n8n/custom:ro
+    environment:
+      - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
+
+  n8n-mcp:
+    image: n8n-mcp
+    volumes:
+      - ./custom-nodes:/custom-nodes:ro
+    environment:
+      - CUSTOM_NODE_PATHS=/custom-nodes/*
+      - N8N_API_URL=http://n8n:5678
+      - N8N_API_KEY=your-key
+```
+
+### Custom Node Requirements
+
+Each custom node package must have:
+- `package.json` with `n8n.nodes` array pointing to compiled files
+- `dist/` directory with compiled `.node.js` files
+
+### Hot Reload
+
+Refresh custom nodes without restart:
+```typescript
+n8n_refresh_custom_nodes({})
+```
+
+Or via CLI:
+```bash
+npm run refresh:custom
 ```
 
 ## 💻 Local Development Setup
@@ -1219,6 +1280,38 @@ MIT License - see [LICENSE](LICENSE) for details.
 - 💬 Mentioning it in your project
 - 🔗 Linking back to this repo
 
+
+## 🔄 Fork Maintenance
+
+This is a fork of [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp) with additional features:
+- **Credential Management Tools** - Full CRUD for n8n credentials
+- **Custom Node Support** - Load nodes from local paths
+- **Hot Reload** - Refresh custom nodes without restart
+
+### Syncing with Upstream
+
+```bash
+# Fetch latest from upstream
+git fetch upstream
+
+# Merge upstream changes
+git checkout main
+git merge upstream/main
+
+# Build and verify
+npm run build && npm run typecheck && npm test
+```
+
+### Fork-Specific Changes
+
+| File | Changes |
+|------|---------|
+| `src/mcp/tools-n8n-manager.ts` | +5 credential tool definitions |
+| `src/mcp/handlers-n8n-manager.ts` | +5 credential handlers |
+| `src/mcp/server.ts` | +credential routing, custom node refresh |
+| `src/mcp/tool-docs/credentials/*` | New documentation files |
+| `src/loaders/node-loader.ts` | Custom node loading |
+| `src/database/schema.sql` | source_type, source_path columns |
 
 ## 🤝 Contributing
 

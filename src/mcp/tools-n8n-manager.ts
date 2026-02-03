@@ -602,5 +602,155 @@ export const n8nManagementTools: ToolDefinition[] = [
       destructiveHint: false,
       openWorldHint: true,
     },
+  },
+
+  // Credential Management Tools
+  {
+    name: 'n8n_list_credentials',
+    description: `List credentials configured in n8n instance. Returns metadata only (id, name, type, dates) - never returns sensitive credential data. Use for checking available credentials before workflow deployment.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Number of credentials to return (1-100, default: 100)'
+        },
+        cursor: {
+          type: 'string',
+          description: 'Pagination cursor from previous response'
+        },
+        type: {
+          type: 'string',
+          description: 'Filter by credential type (e.g., "slackApi", "httpBasicAuth")'
+        }
+      }
+    },
+    annotations: {
+      title: 'List Credentials',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: 'n8n_get_credential',
+    description: `Get credential metadata by ID. Returns id, name, type, and node access info. Does NOT return sensitive credential data (API keys, passwords, tokens).`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Credential ID'
+        }
+      },
+      required: ['id']
+    },
+    annotations: {
+      title: 'Get Credential',
+      readOnlyHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: 'n8n_create_credential',
+    description: `Create a new credential. Requires name, type, and data fields. The data object contains credential-specific fields (apiKey, password, token, etc.). WARNING: Sensitive data is transmitted - use only with trusted n8n instances.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Display name for the credential'
+        },
+        type: {
+          type: 'string',
+          description: 'Credential type (e.g., "slackApi", "httpBasicAuth", "oAuth2Api")'
+        },
+        data: {
+          type: 'object',
+          description: 'Credential data - fields depend on type (e.g., {apiKey: "xxx"} or {user: "x", password: "y"})'
+        },
+        nodesAccess: {
+          type: 'array',
+          description: 'Optional: node types that can use this credential',
+          items: {
+            type: 'object',
+            properties: {
+              nodeType: { type: 'string' }
+            }
+          }
+        }
+      },
+      required: ['name', 'type', 'data']
+    },
+    annotations: {
+      title: 'Create Credential',
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: 'n8n_update_credential',
+    description: `Update an existing credential. Can update name, type, or data. Use for rotating API keys or updating tokens. WARNING: Sensitive data is transmitted.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Credential ID to update'
+        },
+        name: {
+          type: 'string',
+          description: 'New display name'
+        },
+        type: {
+          type: 'string',
+          description: 'New credential type (rarely changed)'
+        },
+        data: {
+          type: 'object',
+          description: 'New credential data - replaces existing data entirely'
+        },
+        nodesAccess: {
+          type: 'array',
+          description: 'Update node types that can use this credential',
+          items: {
+            type: 'object',
+            properties: {
+              nodeType: { type: 'string' }
+            }
+          }
+        }
+      },
+      required: ['id']
+    },
+    annotations: {
+      title: 'Update Credential',
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: 'n8n_delete_credential',
+    description: `Permanently delete a credential. This action cannot be undone. Workflows using this credential will fail until reconfigured.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Credential ID to delete'
+        }
+      },
+      required: ['id']
+    },
+    annotations: {
+      title: 'Delete Credential',
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: true,
+    },
   }
 ];
