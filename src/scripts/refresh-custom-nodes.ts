@@ -113,8 +113,8 @@ async function refreshCustomNodes(overridePaths?: string[]): Promise<{
 
   for (const { packageName, nodeName, NodeClass, sourceType, sourcePath } of loadedNodes) {
     try {
-      // Parse node
-      const parsed = parser.parse(NodeClass, packageName);
+      // Parse node - pass sourceType so custom nodes get CUSTOM.{name} format
+      const parsed = parser.parse(NodeClass, packageName, sourceType);
 
       // Validate parsed data
       if (!parsed.nodeType || !parsed.displayName) {

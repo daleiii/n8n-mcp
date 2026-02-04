@@ -45,7 +45,7 @@ export interface NodeTypeNormalizationResult {
   original: string;
   normalized: string;
   wasNormalized: boolean;
-  package: 'base' | 'langchain' | 'community' | 'unknown';
+  package: 'base' | 'langchain' | 'custom' | 'community' | 'unknown';
 }
 
 export class NodeTypeNormalizer {
@@ -75,6 +75,11 @@ export class NodeTypeNormalizer {
    */
   static normalizeToFullForm(type: string): string {
     if (!type || typeof type !== 'string') {
+      return type;
+    }
+
+    // Custom nodes (CUSTOM.{nodeName}) - never modify
+    if (type.startsWith('CUSTOM.')) {
       return type;
     }
 
@@ -130,7 +135,9 @@ export class NodeTypeNormalizer {
    * @param type - Node type (in any form)
    * @returns Package identifier
    */
-  private static detectPackage(type: string): 'base' | 'langchain' | 'community' | 'unknown' {
+  private static detectPackage(type: string): 'base' | 'langchain' | 'custom' | 'community' | 'unknown' {
+    // Check for custom nodes first
+    if (type.startsWith('CUSTOM.')) return 'custom';
     // Check both short and full forms
     if (type.startsWith('nodes-base.') || type.startsWith('n8n-nodes-base.')) return 'base';
     if (type.startsWith('nodes-langchain.') || type.startsWith('@n8n/n8n-nodes-langchain.') || type.startsWith('n8n-nodes-langchain.')) return 'langchain';
@@ -262,6 +269,11 @@ export class NodeTypeNormalizer {
       return type;
     }
 
+    // Custom nodes (CUSTOM.{nodeName}) - already in correct format for n8n API
+    if (type.startsWith('CUSTOM.')) {
+      return type;
+    }
+
     // Convert short form to full form (API/workflow format)
     // ONLY for official n8n packages
     if (type.startsWith('nodes-base.')) {
@@ -271,8 +283,17 @@ export class NodeTypeNormalizer {
       return type.replace(/^nodes-langchain\./, '@n8n/n8n-nodes-langchain.');
     }
 
-    // Custom/community nodes and already-full-form nodes: return unchanged
-    // This includes packages like n8n-nodes-modex, n8n-nodes-custom, etc.
+    // Community nodes and already-full-form nodes: return unchanged
     return type;
+  }
+
+  /**
+   * Check if a node type is a custom node (loaded via N8N_CUSTOM_EXTENSIONS)
+   *
+   * @param type - Node type to check
+   * @returns True if custom node
+   */
+  static isCustomNode(type: string): boolean {
+    return type?.startsWith('CUSTOM.') ?? false;
   }
 }

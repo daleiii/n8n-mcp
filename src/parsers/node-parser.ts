@@ -41,15 +41,15 @@ export class NodeParser {
   private propertyExtractor = new PropertyExtractor();
   private currentNodeClass: NodeClass | null = null;
 
-  parse(nodeClass: NodeClass, packageName: string): ParsedNode {
+  parse(nodeClass: NodeClass, packageName: string, sourceType?: 'official' | 'community' | 'custom'): ParsedNode {
     this.currentNodeClass = nodeClass;
     // Get base description (handles versioned nodes)
     const description = this.getNodeDescription(nodeClass);
     const outputInfo = this.extractOutputs(description);
-    
+
     return {
       style: this.detectStyle(nodeClass),
-      nodeType: this.extractNodeType(description, packageName),
+      nodeType: this.extractNodeType(description, packageName, sourceType),
       displayName: description.displayName || description.name,
       description: description.description,
       category: this.extractCategory(description),
@@ -124,7 +124,7 @@ export class NodeParser {
     return (desc as any).routing ? 'declarative' : 'programmatic';
   }
 
-  private extractNodeType(description: INodeTypeBaseDescription | INodeTypeDescription, packageName: string): string {
+  private extractNodeType(description: INodeTypeBaseDescription | INodeTypeDescription, packageName: string, sourceType?: 'official' | 'community' | 'custom'): string {
     // Ensure we have the full node type including package prefix
     const name = description.name;
 
@@ -136,15 +136,20 @@ export class NodeParser {
       return name;
     }
 
-    // Add package prefix if missing
-    // Only strip prefixes for official n8n packages, keep full name for custom/community packages
+    // Custom nodes loaded via N8N_CUSTOM_EXTENSIONS use CUSTOM.{nodeName} format
+    // This matches how n8n registers custom nodes internally
+    if (sourceType === 'custom') {
+      return `CUSTOM.${name}`;
+    }
+
+    // Add package prefix for official n8n packages (shortened form for database)
     let packagePrefix: string;
     if (packageName === 'n8n-nodes-base') {
       packagePrefix = 'nodes-base';
     } else if (packageName === '@n8n/n8n-nodes-langchain' || packageName === 'n8n-nodes-langchain') {
       packagePrefix = 'nodes-langchain';
     } else {
-      // Custom/community packages: use full package name as-is
+      // Community packages: use full package name as-is
       packagePrefix = packageName;
     }
     return `${packagePrefix}.${name}`;
