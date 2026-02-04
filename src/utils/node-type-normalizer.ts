@@ -252,6 +252,10 @@ export class NodeTypeNormalizer {
    * @example
    * toWorkflowFormat('n8n-nodes-base.webhook')
    * // → 'n8n-nodes-base.webhook' (already in full format)
+   *
+   * @example Custom/community nodes (unchanged)
+   * toWorkflowFormat('n8n-nodes-modex.modexTrigger')
+   * // → 'n8n-nodes-modex.modexTrigger' (custom packages are not modified)
    */
   static toWorkflowFormat(type: string): string {
     if (!type || typeof type !== 'string') {
@@ -259,6 +263,7 @@ export class NodeTypeNormalizer {
     }
 
     // Convert short form to full form (API/workflow format)
+    // ONLY for official n8n packages
     if (type.startsWith('nodes-base.')) {
       return type.replace(/^nodes-base\./, 'n8n-nodes-base.');
     }
@@ -266,7 +271,8 @@ export class NodeTypeNormalizer {
       return type.replace(/^nodes-langchain\./, '@n8n/n8n-nodes-langchain.');
     }
 
-    // Already in full form or community node - return unchanged
+    // Custom/community nodes and already-full-form nodes: return unchanged
+    // This includes packages like n8n-nodes-modex, n8n-nodes-custom, etc.
     return type;
   }
 }

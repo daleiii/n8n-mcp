@@ -127,17 +127,26 @@ export class NodeParser {
   private extractNodeType(description: INodeTypeBaseDescription | INodeTypeDescription, packageName: string): string {
     // Ensure we have the full node type including package prefix
     const name = description.name;
-    
+
     if (!name) {
       throw new Error('Node is missing name property');
     }
-    
+
     if (name.includes('.')) {
       return name;
     }
-    
+
     // Add package prefix if missing
-    const packagePrefix = packageName.replace('@n8n/', '').replace('n8n-', '');
+    // Only strip prefixes for official n8n packages, keep full name for custom/community packages
+    let packagePrefix: string;
+    if (packageName === 'n8n-nodes-base') {
+      packagePrefix = 'nodes-base';
+    } else if (packageName === '@n8n/n8n-nodes-langchain' || packageName === 'n8n-nodes-langchain') {
+      packagePrefix = 'nodes-langchain';
+    } else {
+      // Custom/community packages: use full package name as-is
+      packagePrefix = packageName;
+    }
     return `${packagePrefix}.${name}`;
   }
   
