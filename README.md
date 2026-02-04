@@ -1,10 +1,37 @@
-# n8n-MCP
+# n8n-MCP (Fork)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/n8n-mcp.svg)](https://www.npmjs.com/package/n8n-mcp)
-[![n8n version](https://img.shields.io/badge/n8n-2.4.4-orange.svg)](https://github.com/n8n-io/n8n)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fdaleiii%2Fn8n--mcp-blue)](https://github.com/daleiii/n8n-mcp/pkgs/container/n8n-mcp)
+[![Upstream](https://img.shields.io/badge/upstream-czlonkowski%2Fn8n--mcp-lightgrey)](https://github.com/czlonkowski/n8n-mcp)
 
-A Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to n8n node documentation, properties, and operations. Gives Claude and other AI assistants deep knowledge about n8n's 1,084 workflow automation nodes (537 core + 547 community).
+A Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to n8n node documentation, properties, and operations. This fork adds credential management, custom node support, and fork-aware version checking.
+
+## Fork Enhancements
+
+This fork ([daleiii/n8n-mcp](https://github.com/daleiii/n8n-mcp)) adds:
+
+### Credential Management
+Tools for managing n8n credentials via the API:
+- `n8n_get_credential_schema` - Get schema for a credential type (required fields, etc.)
+- `n8n_create_credential` - Create new credentials
+- `n8n_update_credential` - Update existing credentials
+- `n8n_delete_credential` - Delete credentials
+
+> **Note:** The n8n public API does not support listing or retrieving credentials by ID for security reasons.
+
+### Custom Node Support
+Load and index custom nodes from local paths:
+- Set `CUSTOM_NODE_PATHS` environment variable (comma-separated paths)
+- Nodes are indexed with `CUSTOM.{nodeName}` format (matching n8n's registration)
+- Use `n8n_refresh_custom_nodes` tool to hot-reload without restart
+- Package name preserved in metadata for reference
+
+### Fork Version Checking
+The health check shows both fork and upstream version status:
+- Detects fork versions via `-fork` suffix (e.g., `2.33.5-fork.1`)
+- Checks GitHub releases for fork updates
+- Checks npm registry for upstream updates
+- Shows when sync with upstream is recommended
 
 ## Quick Start
 
@@ -51,10 +78,10 @@ Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_deskt
 }
 ```
 
-### Option 2: Docker
+### Option 2: Docker (This Fork)
 
 ```bash
-docker pull ghcr.io/czlonkowski/n8n-mcp:latest
+docker pull ghcr.io/daleiii/n8n-mcp:latest
 ```
 
 ```json
@@ -67,7 +94,7 @@ docker pull ghcr.io/czlonkowski/n8n-mcp:latest
         "-e", "MCP_MODE=stdio",
         "-e", "LOG_LEVEL=error",
         "-e", "DISABLE_CONSOLE_OUTPUT=true",
-        "ghcr.io/czlonkowski/n8n-mcp:latest"
+        "ghcr.io/daleiii/n8n-mcp:latest"
       ]
     }
   }
@@ -77,7 +104,7 @@ docker pull ghcr.io/czlonkowski/n8n-mcp:latest
 ### Option 3: Local Development
 
 ```bash
-git clone https://github.com/czlonkowski/n8n-mcp.git
+git clone https://github.com/daleiii/n8n-mcp.git
 cd n8n-mcp
 npm install && npm run build && npm run rebuild
 npm start
@@ -94,19 +121,15 @@ npm start
 - **AI workflow validation** for LangChain agents
 - **~12ms average response time**
 
-## Fork-Specific Additions
-
-This fork ([daleiii/n8n-mcp](https://github.com/daleiii/n8n-mcp)) adds:
-- **Credential Management** - Full CRUD for n8n credentials
-- **Custom Node Support** - Load nodes from local paths
-- **Hot Reload** - Refresh custom nodes without restart
-- **Telemetry Disabled** - No usage data collected
-
 ## Available Tools
 
 **Core Tools (7):** `tools_documentation`, `search_nodes`, `get_node`, `validate_node`, `validate_workflow`, `search_templates`, `get_template`
 
-**Management Tools (18):** Workflow CRUD, execution management, credential management, health checks
+**Management Tools (17):** Workflow CRUD, execution management, health checks
+
+**Credential Tools (4):** `n8n_get_credential_schema`, `n8n_create_credential`, `n8n_update_credential`, `n8n_delete_credential`
+
+**Custom Node Tools (1):** `n8n_refresh_custom_nodes`
 
 See [MCP Tools Reference](./docs/MCP_TOOLS_REFERENCE.md) for complete documentation.
 
