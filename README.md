@@ -131,30 +131,6 @@ npm start
 
 **Custom Node Tools (1):** `n8n_refresh_custom_nodes`
 
-See [MCP Tools Reference](./docs/MCP_TOOLS_REFERENCE.md) for complete documentation.
-
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Installation](./docs/INSTALLATION.md) | Comprehensive setup instructions |
-| [Claude Desktop Setup](./docs/README_CLAUDE_SETUP.md) | Detailed Claude configuration |
-| [Docker Guide](./docs/DOCKER_README.md) | Advanced Docker deployment |
-| [Railway Deployment](./docs/RAILWAY_DEPLOYMENT.md) | One-click cloud deployment |
-| [Claude Project Instructions](./docs/CLAUDE_PROJECT_INSTRUCTIONS.md) | Optimized system prompts for Claude |
-| [MCP Tools Reference](./docs/MCP_TOOLS_REFERENCE.md) | Complete tool documentation |
-
-### IDE Setup
-
-| IDE | Guide |
-|-----|-------|
-| Claude Code | [Setup](./docs/CLAUDE_CODE_SETUP.md) |
-| VS Code | [Setup](./docs/VS_CODE_PROJECT_SETUP.md) |
-| Cursor | [Setup](./docs/CURSOR_SETUP.md) |
-| Windsurf | [Setup](./docs/WINDSURF_SETUP.md) |
-| Codex | [Setup](./docs/CODEX_SETUP.md) |
-| Antigravity | [Setup](./docs/ANTIGRAVITY_SETUP.md) |
-
 ## Development
 
 ```bash
