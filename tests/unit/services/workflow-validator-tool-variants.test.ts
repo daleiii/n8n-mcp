@@ -476,11 +476,12 @@ describe('WorkflowValidator - Tool Variant Validation', () => {
       );
       expect(toolVariantErrors).toHaveLength(0);
 
-      // But there might be an "Unknown node type" error from different validation
-      const unknownNodeErrors = result.errors.filter(e =>
-        e.message && e.message.includes('Unknown node type')
+      // Non-core node types get a warning (not error) since they may be
+      // custom/community nodes not indexed in the static DB
+      const unknownNodeWarnings = result.warnings.filter(e =>
+        e.message && e.message.includes('Unrecognized node type')
       );
-      expect(unknownNodeErrors.length).toBeGreaterThan(0);
+      expect(unknownNodeWarnings.length).toBeGreaterThan(0);
     });
 
     it('should not error for community nodes', async () => {

@@ -433,8 +433,41 @@ export class WorkflowValidator {
         }
 
         if (!nodeInfo) {
+          // Determine if this is a custom or community node type that may
+          // legitimately live outside our static DB. Types with a CUSTOM.* prefix
+          // or a community package prefix (e.g., "n8n-nodes-modex.foo") are not
+          // expected to be indexed. Core n8n types and bare names without a
+          // package prefix (likely typos) remain hard errors.
+          const isCustomOrCommunity = NodeTypeNormalizer.isCustomNode(normalizedType) ||
+            (normalizedType.includes('.') &&
+             !normalizedType.startsWith('nodes-base.') &&
+             !normalizedType.startsWith('nodes-langchain.') &&
+             !normalizedType.startsWith('n8n-nodes-base.') &&
+             !normalizedType.startsWith('n8n-nodes-langchain.') &&
+             !normalizedType.startsWith('@n8n/'));
 
-          // Use NodeSimilarityService to find suggestions
+          if (isCustomOrCommunity) {
+            // Custom/community node — downgrade to warning, skip property validation
+            let message = `Unrecognized node type: "${node.type}" (not in the node registry).`;
+            if (NodeTypeNormalizer.isCustomNode(normalizedType)) {
+              message += ' Custom nodes loaded via N8N_CUSTOM_EXTENSIONS may not be indexed yet.' +
+                ' Run n8n_refresh_custom_nodes to register them.';
+            } else {
+              message += ' This appears to be a community node that is not indexed.' +
+                ' It may still work if installed on your n8n instance.';
+            }
+
+            result.warnings.push({
+              type: 'warning',
+              nodeId: node.id,
+              nodeName: node.name,
+              message,
+              code: 'UNINDEXED_NODE_TYPE'
+            });
+            continue;
+          }
+
+          // Core n8n type not found — this is a real error
           const suggestions = await this.similarityService.findSimilarNodes(node.type, 3);
 
           let message = `Unknown node type: "${node.type}".`;

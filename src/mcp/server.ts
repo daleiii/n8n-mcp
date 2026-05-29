@@ -28,6 +28,9 @@ import { isN8nApiConfigured } from '../config/n8n-api';
 import * as n8nHandlers from './handlers-n8n-manager';
 import { handleUpdatePartialWorkflow } from './handlers-workflow-diff';
 import { refreshCustomNodes, parseCustomNodePaths } from '../scripts/refresh-custom-nodes';
+import { N8nNodeLoader } from '../loaders/node-loader';
+import { NodeParser } from '../parsers/node-parser';
+import { ToolVariantGenerator } from '../services/tool-variant-generator';
 import { getToolDocumentation, getToolsOverview } from './tools-documentation';
 import { PROJECT_VERSION } from '../utils/version';
 import { getNodeTypeAlternatives, getWorkflowNodeType } from '../utils/node-utils';
@@ -188,7 +191,10 @@ export class N8NDocumentationMCPServer {
     }
     
     // Initialize database asynchronously
-    this.initialized = this.initializeDatabase(dbPath).then(() => {
+    this.initialized = this.initializeDatabase(dbPath).then(async () => {
+      // Auto-load custom nodes if CUSTOM_NODE_PATHS is configured
+      await this.loadCustomNodesOnStartup();
+
       // After database is ready, check n8n API configuration (v2.18.3)
       if (this.earlyLogger) {
         this.earlyLogger.logCheckpoint(STARTUP_CHECKPOINTS.N8N_API_CHECKING);
@@ -423,6 +429,70 @@ export class N8NDocumentationMCPServer {
     return statements.filter(s => s.length > 0);
   }
   
+  /**
+   * Auto-load custom nodes on startup when CUSTOM_NODE_PATHS is configured.
+   * Uses the server's existing repository — no separate DB connection needed.
+   * Re-runs on every boot so custom nodes survive container recreations.
+   */
+  private async loadCustomNodesOnStartup(): Promise<void> {
+    const customPaths = parseCustomNodePaths(process.env.CUSTOM_NODE_PATHS);
+    if (customPaths.length === 0) {
+      return;
+    }
+
+    if (!this.repository) {
+      logger.warn('Cannot load custom nodes: repository not initialized');
+      return;
+    }
+
+    try {
+      logger.info(`Loading custom nodes from: ${customPaths.join(', ')}`);
+
+      // Clear stale custom nodes from previous boot
+      const deletedCount = this.repository.deleteCustomNodes();
+      if (deletedCount > 0) {
+        logger.debug(`Cleared ${deletedCount} stale custom nodes`);
+      }
+
+      // Load and parse
+      const loader = new N8nNodeLoader();
+      const parser = new NodeParser();
+      const toolVariantGenerator = new ToolVariantGenerator();
+      const loadedNodes = await loader.loadCustomNodes(customPaths);
+
+      let savedCount = 0;
+      for (const { packageName, nodeName, NodeClass, sourceType, sourcePath } of loadedNodes) {
+        try {
+          const parsed = parser.parse(NodeClass, packageName, sourceType);
+          parsed.sourceType = sourceType;
+          parsed.sourcePath = sourcePath;
+
+          // Generate Tool variant for AI-capable nodes
+          if (parsed.isAITool && !parsed.isTrigger) {
+            const toolVariant = toolVariantGenerator.generateToolVariant(parsed);
+            if (toolVariant) {
+              parsed.hasToolVariant = true;
+              toolVariant.sourceType = 'custom';
+              toolVariant.sourcePath = sourcePath;
+              this.repository.saveNode(toolVariant);
+              savedCount++;
+            }
+          }
+
+          this.repository.saveNode(parsed);
+          savedCount++;
+        } catch (error) {
+          logger.warn(`Failed to load custom node ${nodeName}: ${(error as Error).message}`);
+        }
+      }
+
+      logger.info(`Custom nodes loaded on startup: ${savedCount} nodes from ${customPaths.length} paths`);
+    } catch (error) {
+      logger.error('Failed to auto-load custom nodes on startup:', error);
+      // Non-fatal: server continues with built-in nodes only
+    }
+  }
+
   private async ensureInitialized(): Promise<void> {
     await this.initialized;
     if (!this.db || !this.repository) {
