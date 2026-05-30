@@ -36,3 +36,11 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}
+
+      - name: Prune old images (keep latest 5)
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: n8n-mcp
+          package-type: container
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: false
