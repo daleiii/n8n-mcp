@@ -35,6 +35,10 @@ import { WorkflowValidator } from '../services/workflow-validator';
 import { isN8nApiConfigured } from '../config/n8n-api';
 import * as n8nHandlers from './handlers-n8n-manager';
 import { handleUpdatePartialWorkflow } from './handlers-workflow-diff';
+import { refreshCustomNodes, parseCustomNodePaths } from '../scripts/refresh-custom-nodes';
+import { N8nNodeLoader } from '../loaders/node-loader';
+import { NodeParser } from '../parsers/node-parser';
+import { ToolVariantGenerator } from '../services/tool-variant-generator';
 import { getToolDocumentation, getToolsOverview } from './tools-documentation';
 import { PROJECT_VERSION } from '../utils/version';
 import { getNodeTypeAlternatives, getWorkflowNodeType } from '../utils/node-utils';
@@ -221,7 +225,10 @@ export class N8NDocumentationMCPServer {
     }
     
     // Initialize database asynchronously
-    this.initialized = this.initializeDatabase(dbPath).then(() => {
+    this.initialized = this.initializeDatabase(dbPath).then(async () => {
+      // Auto-load custom nodes if CUSTOM_NODE_PATHS is configured
+      await this.loadCustomNodesOnStartup();
+
       // After database is ready, check n8n API configuration (v2.18.3)
       if (this.earlyLogger) {
         this.earlyLogger.logCheckpoint(STARTUP_CHECKPOINTS.N8N_API_CHECKING);
@@ -437,7 +444,116 @@ export class N8NDocumentationMCPServer {
       throw new Error(`Failed to open database: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-  
+
+  /**
+   * Auto-load custom nodes on startup when CUSTOM_NODE_PATHS is configured.
+   * Uses the server's existing repository -- no separate DB connection needed.
+   * Re-runs on every boot so custom nodes survive container recreations.
+   */
+  private async loadCustomNodesOnStartup(): Promise<void> {
+    const customPaths = parseCustomNodePaths(process.env.CUSTOM_NODE_PATHS);
+    if (customPaths.length === 0) {
+      return;
+    }
+
+    if (!this.repository) {
+      logger.warn('Cannot load custom nodes: repository not initialized');
+      return;
+    }
+
+    try {
+      logger.info(`Loading custom nodes from: ${customPaths.join(', ')}`);
+
+      // Clear stale custom nodes from previous boot
+      const deletedCount = this.repository.deleteCustomNodes();
+      if (deletedCount > 0) {
+        logger.debug(`Cleared ${deletedCount} stale custom nodes`);
+      }
+
+      // Load and parse
+      const loader = new N8nNodeLoader();
+      const parser = new NodeParser();
+      const toolVariantGenerator = new ToolVariantGenerator();
+      const loadedNodes = await loader.loadCustomNodes(customPaths);
+
+      let savedCount = 0;
+      for (const { packageName, nodeName, NodeClass, sourceType, sourcePath } of loadedNodes) {
+        try {
+          const parsed = parser.parse(NodeClass, packageName, sourceType);
+          parsed.sourceType = sourceType;
+          parsed.sourcePath = sourcePath;
+
+          // Generate Tool variant for AI-capable nodes
+          if (parsed.isAITool && !parsed.isTrigger) {
+            const toolVariant = toolVariantGenerator.generateToolVariant(parsed);
+            if (toolVariant) {
+              parsed.hasToolVariant = true;
+              toolVariant.sourceType = 'custom';
+              toolVariant.sourcePath = sourcePath;
+              this.repository.saveNode(toolVariant);
+              savedCount++;
+            }
+          }
+
+          this.repository.saveNode(parsed);
+          savedCount++;
+        } catch (error) {
+          logger.warn(`Failed to parse custom node ${nodeName}: ${(error as Error).message}`);
+        }
+      }
+
+      if (savedCount > 0) {
+        logger.info(`Loaded ${savedCount} custom nodes from ${customPaths.length} path(s)`);
+      }
+    } catch (error) {
+      logger.error('Failed to load custom nodes:', error);
+    }
+  }
+
+  /**
+   * Handle refresh custom nodes request.
+   * Reloads custom nodes from configured paths without full database rebuild.
+   */
+  private async handleRefreshCustomNodes(paths?: string[]): Promise<any> {
+    try {
+      // Use provided paths or fall back to environment variable
+      const customPaths = paths && paths.length > 0
+        ? paths
+        : parseCustomNodePaths(process.env.CUSTOM_NODE_PATHS);
+
+      if (customPaths.length === 0) {
+        return {
+          success: false,
+          message: 'No custom node paths configured. Set CUSTOM_NODE_PATHS environment variable or provide paths parameter.',
+          deleted: 0,
+          loaded: 0,
+          errors: []
+        };
+      }
+
+      const result = await refreshCustomNodes(customPaths);
+
+      return {
+        success: result.errors.length === 0,
+        message: result.loaded > 0
+          ? `Successfully refreshed ${result.loaded} custom nodes`
+          : 'No custom nodes found in the specified paths',
+        deleted: result.deleted,
+        loaded: result.loaded,
+        paths: customPaths,
+        errors: result.errors
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to refresh custom nodes: ${(error as Error).message}`,
+        deleted: 0,
+        loaded: 0,
+        errors: [(error as Error).message]
+      };
+    }
+  }
+
   private async initializeInMemorySchema(): Promise<void> {
     if (!this.db) return;
 
@@ -1178,6 +1294,10 @@ export class N8NDocumentationMCPServer {
           ? { valid: true, errors: [] }
           : { valid: false, errors: [{ field: 'templateId', message: 'templateId is required' }] };
         break;
+      case 'n8n_refresh_custom_nodes':
+        // No required parameters - paths is optional
+        validationResult = { valid: true, errors: [] };
+        break;
       default:
         // For tools not yet migrated to schema validation, use basic validation
         return this.validateToolParamsBasic(toolName, args, legacyRequiredParams || []);
@@ -1660,6 +1780,9 @@ export class N8NDocumentationMCPServer {
         if (!this.repository) throw new Error('Repository not initialized');
         return n8nHandlers.handleDeployTemplate(args, this.templateService, this.repository, this.instanceContext);
 
+      case 'n8n_refresh_custom_nodes':
+        return this.handleRefreshCustomNodes(args.paths);
+
       case 'n8n_manage_datatable': {
         this.validateToolParams(name, args, ['action']);
         const dtAction = args.action;
@@ -1900,7 +2023,7 @@ export class N8NDocumentationMCPServer {
       includeSource?: boolean;
       includeExamples?: boolean;
       includeOperations?: boolean;
-      source?: 'all' | 'core' | 'community' | 'verified';
+      source?: 'all' | 'core' | 'community' | 'verified' | 'custom';
     }
   ): Promise<any> {
     await this.ensureInitialized();
@@ -1943,7 +2066,7 @@ export class N8NDocumentationMCPServer {
       includeSource?: boolean;
       includeExamples?: boolean;
       includeOperations?: boolean;
-      source?: 'all' | 'core' | 'community' | 'verified';
+      source?: 'all' | 'core' | 'community' | 'verified' | 'custom';
     }
   ): Promise<any> {
     if (!this.db) throw new Error('Database not initialized');
@@ -1996,6 +2119,9 @@ export class N8NDocumentationMCPServer {
           break;
         case 'verified':
           sourceFilter = 'AND n.is_community = 1 AND n.is_verified = 1';
+          break;
+        case 'custom':
+          sourceFilter = "AND n.source_type = 'custom'";
           break;
         // 'all' - no filter
       }
@@ -2322,7 +2448,7 @@ export class N8NDocumentationMCPServer {
       includeSource?: boolean;
       includeExamples?: boolean;
       includeOperations?: boolean;
-      source?: 'all' | 'core' | 'community' | 'verified';
+      source?: 'all' | 'core' | 'community' | 'verified' | 'custom';
     }
   ): Promise<any> {
     if (!this.db) throw new Error('Database not initialized');
@@ -2339,6 +2465,9 @@ export class N8NDocumentationMCPServer {
         break;
       case 'verified':
         sourceFilter = 'AND is_community = 1 AND is_verified = 1';
+        break;
+      case 'custom':
+        sourceFilter = "AND source_type = 'custom'";
         break;
       // 'all' - no filter
     }

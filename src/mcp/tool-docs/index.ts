@@ -8,7 +8,8 @@ import { getTemplateDoc, searchTemplatesDoc } from './templates';
 import {
   toolsDocumentationDoc,
   n8nHealthCheckDoc,
-  n8nAuditInstanceDoc
+  n8nAuditInstanceDoc,
+  n8nRefreshCustomNodesDoc
 } from './system';
 import { aiAgentsGuide } from './guides';
 import {
@@ -35,6 +36,7 @@ export const toolsDocumentation: Record<string, ToolDocumentation> = {
   tools_documentation: toolsDocumentationDoc,
   n8n_health_check: n8nHealthCheckDoc,
   n8n_audit_instance: n8nAuditInstanceDoc,
+  n8n_refresh_custom_nodes: n8nRefreshCustomNodesDoc,
 
   // Guides
   ai_agents_guide: aiAgentsGuide,

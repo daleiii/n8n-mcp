@@ -131,10 +131,12 @@ describe('NodeRepository - Core Functionality', () => {
         null, // communityFetchedAt
         null, // npm_readme (preserved from existing)
         null, // ai_documentation_summary (preserved from existing)
-        null  // ai_summary_generated_at (preserved from existing)
+        null, // ai_summary_generated_at (preserved from existing)
+        'official', // source_type
+        null  // source_path
       );
     });
-    
+
     it('should handle nodes without optional fields', () => {
       const minimalNode: ParsedNode = {
         nodeType: 'nodes-base.simple',
@@ -199,6 +201,8 @@ describe('NodeRepository - Core Functionality', () => {
         npm_readme: null,
         ai_documentation_summary: null,
         ai_summary_generated_at: null,
+        source_type: 'official',
+        source_path: null,
       };
 
       mockAdapter._setMockData('node:nodes-base.httpRequest', mockRow);
@@ -237,9 +241,11 @@ describe('NodeRepository - Core Functionality', () => {
         npmReadme: null,
         aiDocumentationSummary: null,
         aiSummaryGeneratedAt: null,
+        sourceType: 'official',
+        sourcePath: null,
       });
     });
-    
+
     it('should return null for non-existent nodes', () => {
       const result = repository.getNode('non-existent');
       expect(result).toBeNull();

@@ -78,6 +78,9 @@ export class NodeTypeNormalizer {
       return type;
     }
 
+    // Custom nodes use CUSTOM.{name} format - pass through unchanged
+    if (type.startsWith('CUSTOM.')) return type;
+
     // Normalize full forms to short form (database format)
     if (type.startsWith('n8n-nodes-base.')) {
       return type.replace(/^n8n-nodes-base\./, 'nodes-base.');
@@ -131,6 +134,8 @@ export class NodeTypeNormalizer {
    * @returns Package identifier
    */
   private static detectPackage(type: string): 'base' | 'langchain' | 'community' | 'unknown' {
+    // Custom nodes are treated as community for package detection
+    if (type.startsWith('CUSTOM.')) return 'community';
     // Check both short and full forms
     if (type.startsWith('nodes-base.') || type.startsWith('n8n-nodes-base.')) return 'base';
     if (type.startsWith('nodes-langchain.') || type.startsWith('@n8n/n8n-nodes-langchain.') || type.startsWith('n8n-nodes-langchain.')) return 'langchain';
@@ -258,6 +263,9 @@ export class NodeTypeNormalizer {
       return type;
     }
 
+    // Custom nodes use CUSTOM.{name} format - pass through unchanged
+    if (type.startsWith('CUSTOM.')) return type;
+
     // Convert short form to full form (API/workflow format)
     if (type.startsWith('nodes-base.')) {
       return type.replace(/^nodes-base\./, 'n8n-nodes-base.');
@@ -268,5 +276,12 @@ export class NodeTypeNormalizer {
 
     // Already in full form or community node - return unchanged
     return type;
+  }
+
+  /**
+   * Check if a node type is a custom node (loaded from filesystem)
+   */
+  static isCustomNode(type: string): boolean {
+    return type?.startsWith('CUSTOM.') ?? false;
   }
 }

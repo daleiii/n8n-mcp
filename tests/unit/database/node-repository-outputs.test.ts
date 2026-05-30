@@ -103,7 +103,9 @@ describe('NodeRepository - Outputs Handling', () => {
         null, // community_fetched_at
         null, // npm_readme (preserved from existing)
         null, // ai_documentation_summary (preserved from existing)
-        null  // ai_summary_generated_at (preserved from existing)
+        null, // ai_summary_generated_at (preserved from existing)
+        'official', // source_type
+        null  // source_path
       );
     });
 
@@ -261,7 +263,9 @@ describe('NodeRepository - Outputs Handling', () => {
         community_fetched_at: null,
         npm_readme: null,
         ai_documentation_summary: null,
-        ai_summary_generated_at: null
+        ai_summary_generated_at: null,
+        source_type: 'official',
+        source_path: null
       };
 
       mockStatement.get.mockReturnValue(mockRow);
@@ -299,7 +303,9 @@ describe('NodeRepository - Outputs Handling', () => {
         communityFetchedAt: null,
         npmReadme: null,
         aiDocumentationSummary: null,
-        aiSummaryGeneratedAt: null
+        aiSummaryGeneratedAt: null,
+        sourceType: 'official',
+        sourcePath: null
       });
     });
 

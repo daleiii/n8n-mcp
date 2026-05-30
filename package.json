@@ -53,6 +53,7 @@
     "fetch:templates:update": "node dist/scripts/fetch-templates.js --update",
     "fetch:templates:extract": "node dist/scripts/fetch-templates.js --extract-only",
     "fetch:templates:robust": "node dist/scripts/fetch-templates-robust.js",
+    "refresh:custom": "node dist/scripts/refresh-custom-nodes.js",
     "fetch:community": "node dist/scripts/fetch-community-nodes.js",
     "fetch:community:verified": "node dist/scripts/fetch-community-nodes.js --verified-only",
     "fetch:community:update": "node dist/scripts/fetch-community-nodes.js --update",

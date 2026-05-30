@@ -449,6 +449,33 @@ export class WorkflowValidator {
         }
 
         if (!nodeInfo) {
+          // Check if this is a custom or community node type not in the database.
+          // Custom nodes (CUSTOM.*) and third-party community nodes (package.name format
+          // that is not nodes-base/nodes-langchain/@n8n) are expected to be absent from
+          // the built-in database. Emit a warning instead of an error so the workflow
+          // can still pass validation.
+          const isCustomType = NodeTypeNormalizer.isCustomNode(normalizedType);
+          const isThirdPartyCommunity = !isCustomType &&
+            normalizedType.includes('.') &&
+            !normalizedType.startsWith('nodes-base.') &&
+            !normalizedType.startsWith('nodes-langchain.') &&
+            !normalizedType.startsWith('n8n-nodes-base.') &&
+            !normalizedType.startsWith('@n8n/');
+
+          if (isCustomType || isThirdPartyCommunity) {
+            result.warnings.push({
+              type: 'warning',
+              nodeId: node.id,
+              nodeName: node.name,
+              message: `Node type "${node.type}" is not in the n8n-mcp database. ` +
+                (isCustomType
+                  ? 'This appears to be a custom node loaded from the filesystem. '
+                  : 'This appears to be a third-party community node. ') +
+                'Parameter validation was skipped.',
+              code: 'UNINDEXED_NODE_TYPE'
+            });
+            continue;
+          }
 
           // Use NodeSimilarityService to find suggestions
           const suggestions = await this.similarityService.findSimilarNodes(node.type, 3);

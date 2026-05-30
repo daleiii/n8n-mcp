@@ -197,6 +197,50 @@ The MCP server exposes tools in several categories:
 ### Development Best Practices
 - Run typecheck and lint after every code change
 
+### Fork Maintenance
+
+This is a fork of [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp). The upstream remote is configured:
+
+```bash
+git remote -v
+# origin    https://github.com/daleiii/n8n-mcp.git (your fork)
+# upstream  https://github.com/czlonkowski/n8n-mcp.git (original)
+```
+
+**Syncing with upstream:**
+```bash
+git fetch upstream
+git checkout main
+git merge upstream/main
+npm run build && npm run typecheck && npm test
+git push origin main
+```
+
+**Our fork-specific additions:**
+- Custom node support (`node-loader.ts`, `schema.sql`, `refresh-custom-nodes.ts`)
+- `CUSTOM_NODE_PATHS` env var for loading custom nodes from the filesystem
+- `n8n_refresh_custom_nodes` MCP tool
+- Startup auto-loading of custom nodes when `CUSTOM_NODE_PATHS` is set
+- Validator downgrades unknown custom/community types to warnings instead of errors
+
+**Conflict-prone files when merging:**
+- `src/mcp/server.ts` - We added startup loading and refresh handler
+- `src/mcp/tools.ts` - We added tool definition
+- `src/loaders/node-loader.ts` - We added custom node methods
+
+**Best practices:**
+- Sync weekly or before adding new features
+- Tag releases before syncing: `git tag -a v2.x.x-fork -m "description"`
+- Keep changes at end of files where possible to minimize conflicts
+
+**Database Schema Changes:**
+If you modify the database schema (`src/database/schema.sql`), you must rebuild `data/nodes.db` using the GitHub Action:
+1. Push your schema changes to the repo
+2. Go to Actions -> "Rebuild Node Database" -> Run workflow
+3. The workflow will rebuild the database with the new schema and commit it
+
+Do NOT try to rebuild locally with Node 25+ as `better-sqlite3` won't compile.
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.

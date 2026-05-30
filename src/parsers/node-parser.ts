@@ -32,21 +32,24 @@ export interface ParsedNode {
   isToolVariant?: boolean;      // True for *Tool variants (e.g., supabaseTool)
   toolVariantOf?: string;       // For Tool variants: base node type (e.g., nodes-base.supabase)
   hasToolVariant?: boolean;     // For base nodes: true if Tool variant exists
+  // Custom node source tracking
+  sourceType?: 'official' | 'community' | 'custom';
+  sourcePath?: string;          // Filesystem path for custom nodes
 }
 
 export class NodeParser {
   private propertyExtractor = new PropertyExtractor();
   private currentNodeClass: NodeClass | null = null;
 
-  parse(nodeClass: NodeClass, packageName: string): ParsedNode {
+  parse(nodeClass: NodeClass, packageName: string, sourceType?: 'official' | 'community' | 'custom'): ParsedNode {
     this.currentNodeClass = nodeClass;
     // Get base description (handles versioned nodes)
     const description = this.getNodeDescription(nodeClass);
     const outputInfo = this.extractOutputs(description);
-    
+
     return {
       style: this.detectStyle(nodeClass),
-      nodeType: this.extractNodeType(description, packageName),
+      nodeType: this.extractNodeType(description, packageName, sourceType),
       displayName: description.displayName || description.name,
       description: description.description,
       category: this.extractCategory(description),
@@ -121,18 +124,24 @@ export class NodeParser {
     return (desc as any).routing ? 'declarative' : 'programmatic';
   }
 
-  private extractNodeType(description: INodeTypeBaseDescription | INodeTypeDescription, packageName: string): string {
+  private extractNodeType(description: INodeTypeBaseDescription | INodeTypeDescription, packageName: string, sourceType?: 'official' | 'community' | 'custom'): string {
     // Ensure we have the full node type including package prefix
     const name = description.name;
-    
+
     if (!name) {
       throw new Error('Node is missing name property');
     }
-    
+
     if (name.includes('.')) {
       return name;
     }
-    
+
+    // Custom nodes loaded via N8N_CUSTOM_EXTENSIONS use CUSTOM.{nodeName} format
+    // This matches how n8n registers custom nodes internally
+    if (sourceType === 'custom') {
+      return `CUSTOM.${name}`;
+    }
+
     // Add package prefix if missing
     const packagePrefix = packageName.replace('@n8n/', '').replace('n8n-', '');
     return `${packagePrefix}.${name}`;
