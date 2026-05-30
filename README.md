@@ -381,7 +381,7 @@ Save these instructions in your Claude Project for optimal n8n workflow assistan
 
 ### Core Tools (7 tools)
 - **`tools_documentation`** - Get documentation for any MCP tool (START HERE!)
-- **`search_nodes`** - Full-text search across all nodes. Use `source: 'community'|'verified'` for community nodes, `includeExamples: true` for configs
+- **`search_nodes`** - Full-text search across all nodes. Use `source: 'community'|'verified'|'custom'` to filter by origin, `includeExamples: true` for configs
 - **`get_node`** - Unified node information tool with multiple modes:
   - **Info mode** (default): `detail: 'minimal'|'standard'|'full'`, `includeExamples: true`
   - **Docs mode**: `mode: 'docs'` - Human-readable markdown documentation
@@ -398,7 +398,7 @@ Save these instructions in your Claude Project for optimal n8n workflow assistan
   - `searchMode: 'by_metadata'` - Filter by `complexity`, `requiredService`, `targetAudience`
 - **`get_template`** - Get complete workflow JSON (modes: nodes_only, structure, full)
 
-### n8n Management Tools (13 tools - Requires API Configuration)
+### n8n Management Tools (15 tools - Requires API Configuration)
 These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 
 #### Workflow Management
@@ -423,8 +423,17 @@ These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 #### Security & Audit
 - **`n8n_audit_instance`** - Security audit combining n8n's built-in audit API with deep workflow scanning
 
+#### Data Tables
+- **`n8n_manage_datatable`** - Manage n8n data tables and rows (create, list, get, update, delete tables and rows)
+
+#### Workflow Generation
+- **`n8n_generate_workflow`** - Generate a workflow from natural language using AI
+
 #### System Tools
 - **`n8n_health_check`** - Check n8n API connectivity and features
+
+### Custom Node Tools (Fork Addition)
+- **`n8n_refresh_custom_nodes`** - Hot-reload custom nodes from `CUSTOM_NODE_PATHS` without restarting the server
 
 ## Documentation
 
