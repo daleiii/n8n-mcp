@@ -1,0 +1,75 @@
+name: Rebuild Node Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_message:
+        description: 'Commit message for the database update'
+        required: false
+        default: 'chore: rebuild nodes.db with latest schema'
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install better-sqlite3 for FTS5 support
+        run: npm install better-sqlite3 --save-dev
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Remove old database
+        run: rm -f data/nodes.db data/nodes.db-shm data/nodes.db-wal
+
+      - name: Rebuild database
+        run: npm run rebuild
+
+      - name: Verify database has new schema
+        run: |
+          node -e "
+            const Database = require('better-sqlite3');
+            const db = new Database('./data/nodes.db');
+            const columns = db.prepare(\"PRAGMA table_info(nodes)\").all();
+            const hasSourceType = columns.some(c => c.name === 'source_type');
+            const hasSourcePath = columns.some(c => c.name === 'source_path');
+            console.log('Columns:', columns.map(c => c.name).join(', '));
+            console.log('Has source_type:', hasSourceType);
+            console.log('Has source_path:', hasSourcePath);
+            if (!hasSourceType || !hasSourcePath) {
+              console.error('ERROR: Missing required columns!');
+              process.exit(1);
+            }
+            const count = db.prepare('SELECT COUNT(*) as count FROM nodes').get();
+            console.log('Total nodes:', count.count);
+            db.close();
+          "
+
+      - name: Commit and push updated database
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/nodes.db
+          git commit -m "${{ github.event.inputs.commit_message }}" || echo "No changes to commit"
+          git push
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodes-db
+          path: data/nodes.db
+          retention-days: 7
