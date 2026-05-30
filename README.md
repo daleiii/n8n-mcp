@@ -11,6 +11,43 @@
 
 A Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to n8n node documentation, properties, and operations. Deploy in minutes to give Claude and other AI assistants deep knowledge about n8n's 1,851 workflow automation nodes (822 core + 1,029 community).
 
+> **Fork note:** This is a fork of [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp) with added support for custom n8n nodes. See [Fork Enhancements](#fork-enhancements) below.
+
+## Fork Enhancements
+
+This fork adds **custom node support** — the ability to load and validate n8n nodes installed via `N8N_CUSTOM_EXTENSIONS` that live outside the standard npm packages.
+
+### What's added
+
+- **Auto-loading on startup** — Set `CUSTOM_NODE_PATHS=/path/to/custom-nodes/*` and custom nodes are automatically registered when the server starts. No manual refresh needed after container restarts.
+- **`n8n_refresh_custom_nodes` tool** — Hot-reload custom nodes without restarting the server or rebuilding the database.
+- **`CUSTOM.{nodeName}` type format** — Matches n8n's internal convention for nodes loaded via `N8N_CUSTOM_EXTENSIONS`.
+- **Graceful validation** — Workflows using custom or community nodes that aren't in the registry get warnings instead of hard errors, so validation doesn't block valid workflows.
+- **Search filtering** — Use `search_nodes(source="custom")` to find only your custom nodes.
+
+### Configuration
+
+```bash
+# Point to your custom node packages (supports wildcards)
+CUSTOM_NODE_PATHS=/home/node/custom-nodes/*
+
+# Multiple paths
+CUSTOM_NODE_PATHS=/path/to/package-a,/path/to/package-b
+
+# Docker: mount your custom nodes and set the env var
+docker run -v ./custom-nodes:/home/node/custom-nodes \
+  -e CUSTOM_NODE_PATHS=/home/node/custom-nodes/* \
+  n8n-mcp
+```
+
+### Staying in sync with upstream
+
+```bash
+git fetch upstream
+git merge upstream/main
+npm run build && npm test
+```
+
 ## Overview
 
 n8n-MCP serves as a bridge between n8n's workflow automation platform and AI models, enabling them to understand and work with n8n nodes effectively. It provides structured access to:
