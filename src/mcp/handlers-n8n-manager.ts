@@ -32,7 +32,7 @@ import { z } from 'zod';
 import { WorkflowValidator } from '../services/workflow-validator';
 import { EnhancedConfigValidator } from '../services/enhanced-config-validator';
 import { NodeRepository } from '../database/node-repository';
-import { InstanceContext, validateInstanceContext } from '../types/instance-context';
+import { InstanceContext, validateInstanceContext, getInstanceScopeId } from '../types/instance-context';
 import { NodeTypeNormalizer } from '../utils/node-type-normalizer';
 import { WorkflowAutoFixer, AutoFixConfig } from '../services/workflow-auto-fixer';
 import { ExpressionFormatValidator, ExpressionFormatIssue } from '../services/expression-format-validator';
@@ -50,6 +50,11 @@ import {
 } from '../utils/cache-utils';
 import { processExecution } from '../services/execution-processor';
 import { checkNpmVersion, formatVersionMessage } from '../utils/npm-version-checker';
+import {
+  normalizeMcpJsonValue,
+  normalizeMcpWorkflowConnections,
+  normalizeMcpWorkflowNodes,
+} from '../utils/mcp-input-normalizer';
 
 // ========================================================================
 // TypeScript Interfaces for Type Safety
@@ -429,11 +434,11 @@ const optionalEmptyAware = <T extends z.ZodTypeAny>(schema: T) =>
 // Zod schemas for input validation
 const createWorkflowSchema = z.object({
   name: z.string(),
-  nodes: z.preprocess(tryParseJson, z.array(z.any())),
+  nodes: z.preprocess(normalizeMcpWorkflowNodes, z.array(z.any())),
   // Two-arg z.record(keySchema, valueSchema) — see services/n8n-validation.ts for the
   // Zod 3/4 compatibility rationale (#744).
-  connections: z.preprocess(tryParseJson, z.record(z.string(), z.any())),
-  settings: z.preprocess(tryParseJson, z.object({
+  connections: z.preprocess(normalizeMcpWorkflowConnections, z.record(z.string(), z.any())),
+  settings: z.preprocess(normalizeMcpJsonValue, z.object({
     executionOrder: z.enum(['v0', 'v1']).optional(),
     timezone: z.string().optional(),
     saveDataErrorExecution: z.enum(['all', 'none']).optional(),
@@ -449,9 +454,9 @@ const createWorkflowSchema = z.object({
 const updateWorkflowSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
-  nodes: z.preprocess(tryParseJson, z.array(z.any())).optional(),
-  connections: z.preprocess(tryParseJson, z.record(z.string(), z.any())).optional(),
-  settings: z.preprocess(tryParseJson, z.any()).optional(),
+  nodes: z.preprocess(normalizeMcpWorkflowNodes, z.array(z.any())).optional(),
+  connections: z.preprocess(normalizeMcpWorkflowConnections, z.record(z.string(), z.any())).optional(),
+  settings: z.preprocess(normalizeMcpJsonValue, z.any()).optional(),
   createBackup: z.boolean().optional(),
   intent: z.string().optional(),
 });
@@ -460,7 +465,7 @@ const listWorkflowsSchema = z.object({
   limit: z.number().min(1).max(100).optional(),
   cursor: optionalEmptyAware(z.string()),
   active: z.boolean().optional(),
-  tags: z.preprocess(tryParseJson, z.array(z.string())).optional(),
+  tags: z.preprocess(normalizeMcpJsonValue, z.array(z.string())).optional(),
   projectId: optionalEmptyAware(z.string()),
   excludePinnedData: z.boolean().optional(),
 });
@@ -521,14 +526,13 @@ const listExecutionsSchema = z.object({
 });
 
 const workflowVersionsSchema = z.object({
-  mode: z.enum(['list', 'get', 'rollback', 'delete', 'prune', 'truncate']),
+  mode: z.enum(['list', 'get', 'rollback', 'delete', 'prune']),
   workflowId: z.string().optional(),
   versionId: z.number().optional(),
   limit: z.number().default(10).optional(),
   validateBefore: z.boolean().default(true).optional(),
   deleteAll: z.boolean().default(false).optional(),
   maxVersions: z.number().default(10).optional(),
-  confirmTruncate: z.boolean().default(false).optional(),
 });
 
 // Workflow Management Handlers
@@ -815,6 +819,71 @@ export async function handleGetWorkflowMinimal(args: unknown, context?: Instance
 }
 
 /**
+ * Returns the full config of only the requested nodes, identified by node name or node ID.
+ * Large workflows with long Code-node source can exceed client-side response limits when
+ * fetched whole (issue #101); this mode lets a caller pull one heavy node's `parameters`
+ * without the rest of the graph. Discover node names cheaply with mode='structure' first.
+ *
+ * `nodeNames` accepts both node names and node IDs; any entries that match nothing are
+ * reported back in `notFound` so the caller knows the lookup was partial.
+ */
+export async function handleGetWorkflowFiltered(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
+  try {
+    const client = ensureApiConfigured(context);
+    const { id, nodeNames } = z.object({
+      id: z.string(),
+      nodeNames: z.array(z.string()).min(1)
+    }).parse(args);
+
+    const workflow = await client.getWorkflow(id);
+
+    const requested = new Set(nodeNames);
+    const matchedNodes = workflow.nodes.filter(
+      node => requested.has(node.name) || requested.has(node.id)
+    );
+
+    // Report any requested keys that resolved to no node so partial requests are transparent.
+    const matchedKeys = new Set(matchedNodes.flatMap(node => [node.name, node.id]));
+    const notFound = nodeNames.filter(key => !matchedKeys.has(key));
+
+    return {
+      success: true,
+      data: {
+        id: workflow.id,
+        name: workflow.name,
+        active: workflow.active,
+        isArchived: workflow.isArchived,
+        nodes: matchedNodes,
+        nodeCount: workflow.nodes.length,
+        returnedCount: matchedNodes.length,
+        ...(notFound.length > 0 ? { notFound } : {})
+      }
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: 'Invalid input',
+        details: { errors: error.errors }
+      };
+    }
+
+    if (error instanceof N8nApiError) {
+      return {
+        success: false,
+        error: getUserFriendlyErrorMessage(error),
+        code: error.code
+      };
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
+  }
+}
+
+/**
  * Returns the workflow's published (active) graph. n8n's draft/publish model exposes
  * the live version under `activeVersion`; this handler surfaces that as a single-shaped
  * response with `nodes`/`connections` populated from the published version. Use this when
@@ -925,38 +994,67 @@ export async function handleUpdateWorkflow(
     const { id, createBackup, intent, ...updateData } = input;
     userIntent = intent || 'Full workflow update';
 
-    // If nodes/connections are being updated, validate the structure
-    if (updateData.nodes || updateData.connections) {
-      // Always fetch current workflow for validation (need all fields like name)
-      const current = await client.getWorkflow(id);
-      workflowBefore = JSON.parse(JSON.stringify(current));
+    // n8n's Public API PUT /workflows is a FULL replace: the write schema requires name,
+    // nodes, connections AND settings to all be present. This tool exposes them as optional,
+    // so we always fetch the current workflow and merge the caller's partial update over it.
+    // Without this, omitting e.g. `name` fails with
+    // "request/body must have required property 'name'".
+    const current = await client.getWorkflow(id);
+    workflowBefore = JSON.parse(JSON.stringify(current));
 
-      // Preserve credentials from current workflow for nodes that don't specify them.
-      // AI-generated node updates typically omit credential references because they
-      // aren't included in the context provided to the AI. Without this merge, the
-      // n8n API rejects the PUT with missing credentials.
-      if (updateData.nodes && current.nodes) {
-        const currentById = new Map<string, any>();
-        const currentByName = new Map<string, any>();
-        for (const node of current.nodes) {
-          if (node.id) currentById.set(node.id, node);
-          currentByName.set(node.name, node);
-        }
-        for (const node of updateData.nodes as any[]) {
-          const hasCredentials = node.credentials && typeof node.credentials === 'object' && Object.keys(node.credentials).length > 0;
-          if (!hasCredentials) {
-            const match = (node.id && currentById.get(node.id)) || currentByName.get(node.name);
-            if (match?.credentials) {
-              node.credentials = match.credentials;
-            }
+    // Preserve credentials from current workflow for nodes that don't specify them.
+    // AI-generated node updates typically omit credential references because they
+    // aren't included in the context provided to the AI. Without this merge, the
+    // n8n API rejects the PUT with missing credentials.
+    if (updateData.nodes && current.nodes) {
+      const currentById = new Map<string, any>();
+      const currentByName = new Map<string, any>();
+      for (const node of current.nodes) {
+        if (node.id) currentById.set(node.id, node);
+        currentByName.set(node.name, node);
+      }
+      for (const node of updateData.nodes as any[]) {
+        const hasCredentials = node.credentials && typeof node.credentials === 'object' && Object.keys(node.credentials).length > 0;
+        if (!hasCredentials) {
+          const match = (node.id && currentById.get(node.id)) || currentByName.get(node.name);
+          if (match?.credentials) {
+            node.credentials = match.credentials;
           }
         }
       }
+    }
 
+    // Merge the partial update over the current workflow so all API-required fields are
+    // present. cleanWorkflowForUpdate() (inside client.updateWorkflow) strips the read-only
+    // fields carried in from the GET response.
+    //
+    // Settings are handled separately from the spread: the Zod schema allows `settings` to be
+    // null / any value, and a null (or otherwise non-object) value spread over `current` would
+    // clobber the existing settings and then get reduced to minimal defaults downstream. n8n's
+    // PUT is a full replace and requires settings to be present, so we only override when the
+    // caller supplied a real settings object — and then we merge it over the current settings
+    // so a partial payload (e.g. { executionOrder: 'v0' }) doesn't drop untouched keys like
+    // timezone/errorWorkflow. A missing/null/non-object settings value leaves current settings
+    // untouched.
+    const { settings: settingsUpdate, ...nonSettingsUpdate } = updateData;
+    const fullWorkflow = {
+      ...current,
+      ...nonSettingsUpdate
+    };
+
+    if (settingsUpdate && typeof settingsUpdate === 'object') {
+      fullWorkflow.settings = {
+        ...((current.settings as Record<string, unknown>) ?? {}),
+        ...(settingsUpdate as Record<string, unknown>),
+      };
+    }
+
+    // Backup + structure validation only when the graph changed (nodes/connections).
+    if (updateData.nodes || updateData.connections) {
       // Create backup before modifying workflow (default: true)
       if (createBackup !== false) {
         try {
-          const versioningService = new WorkflowVersioningService(repository, client);
+          const versioningService = new WorkflowVersioningService(repository, client, getInstanceScopeId(context));
           const backupResult = await versioningService.createBackup(id, current, {
             trigger: 'full_update'
           });
@@ -976,11 +1074,6 @@ export async function handleUpdateWorkflow(
         }
       }
 
-      const fullWorkflow = {
-        ...current,
-        ...updateData
-      };
-
       // Validate workflow structure (n8n API expects FULL form: n8n-nodes-base.*)
       const errors = validateWorkflowStructure(fullWorkflow);
       if (errors.length > 0) {
@@ -992,8 +1085,8 @@ export async function handleUpdateWorkflow(
       }
     }
 
-    // Update workflow
-    const workflow = await client.updateWorkflow(id, updateData);
+    // Update workflow with the merged full payload
+    const workflow = await client.updateWorkflow(id, fullWorkflow as Partial<Workflow>);
 
     // Track successful mutation
     if (workflowBefore) {
@@ -2377,8 +2470,18 @@ export async function handleWorkflowVersions(
 ): Promise<McpToolResponse> {
   try {
     const input = workflowVersionsSchema.parse(args);
+
+    // SECURITY (GHSA-2cf7-hpwf-47h9): multi-tenant requests must resolve a
+    // complete tenant scope; fail closed otherwise.
+    if (process.env.ENABLE_MULTI_TENANT === 'true' && getInstanceScopeId(context) === '') {
+      return {
+        success: false,
+        error: 'Workflow version storage is not available for this tenant context'
+      };
+    }
+
     const client = context ? getN8nApiClient(context) : null;
-    const versioningService = new WorkflowVersioningService(repository, client || undefined);
+    const versioningService = new WorkflowVersioningService(repository, client || undefined, getInstanceScopeId(context));
 
     switch (input.mode) {
       case 'list': {
@@ -2513,25 +2616,6 @@ export async function handleWorkflowVersions(
             pruned: result.pruned,
             remaining: result.remaining,
             message: `Pruned ${result.pruned} old version(s), ${result.remaining} version(s) remaining`
-          }
-        };
-      }
-
-      case 'truncate': {
-        if (!input.confirmTruncate) {
-          return {
-            success: false,
-            error: 'confirmTruncate must be true to truncate all versions. This action cannot be undone.'
-          };
-        }
-
-        const result = await versioningService.truncateAllVersions(true);
-
-        return {
-          success: true,
-          data: {
-            deleted: result.deleted,
-            message: result.message
           }
         };
       }
@@ -3140,6 +3224,10 @@ export async function handleDeleteRows(args: unknown, context?: InstanceContext)
 
 const listCredentialsSchema = z.object({
   includeUsage: z.boolean().optional(),
+  // Mirror listWorkflowsSchema: bound limit and normalize an empty-string cursor
+  // to undefined so an echoed-back empty nextCursor isn't forwarded to the n8n API.
+  cursor: optionalEmptyAware(z.string()),
+  limit: z.number().min(1).max(100).optional(),
 }).passthrough();
 
 const getCredentialSchema = z.object({
@@ -3211,36 +3299,101 @@ type CredentialWithUsage = Credential & {
   usageCount?: number;
 };
 
+// Strip the sensitive `data` field from a credential before returning it.
+// Defense in depth against future n8n versions returning decrypted values.
+function stripCredentialData(credential: Credential): CredentialWithUsage {
+  const { data: _sensitiveData, ...safeCred } = credential;
+  return safeCred;
+}
+
+// Not every n8n deployment allows credential reads through its public API:
+// older versions reject GET /credentials with 405 (#809), and API-key scopes
+// or instance settings can block it with 403. Detect that so list/get can
+// explain the limitation instead of surfacing a bare "GET method not allowed".
+function isCredentialReadUnsupported(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const status = (error as { statusCode?: number }).statusCode;
+  if (status === 405 || status === 403) {
+    return true;
+  }
+  // Some errors arrive unwrapped, without a statusCode — fall back to the
+  // reason phrase then, but never override a concrete non-405/403 status.
+  if (status !== undefined) {
+    return false;
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('not allowed');
+}
+
+// Fresh object per call: the response carries per-error details, and a shared
+// singleton could be mutated downstream by future response decoration.
+function credentialReadUnsupportedResponse(error: unknown): McpToolResponse {
+  return {
+    success: false,
+    error:
+      'This n8n instance\'s public API rejected the credential read. On older n8n versions the public API ' +
+      'does not expose GET /credentials at all; on newer ones this can mean the API key or instance settings ' +
+      'do not permit credential reads. The create, delete, and getSchema actions generally still work, and ' +
+      'update does too where the API version supports it (it needs a known credential ID, not list/get). ' +
+      'To find an existing credential\'s ID, open it in the n8n UI — the ID is in the URL.',
+    code: 'NOT_SUPPORTED',
+    details: {
+      statusCode: (error as { statusCode?: number }).statusCode,
+      cause: error instanceof Error ? error.message : String(error),
+    },
+  };
+}
+
 export async function handleListCredentials(args: unknown, context?: InstanceContext): Promise<McpToolResponse> {
   try {
     const client = ensureApiConfigured(context);
-    const { includeUsage } = listCredentialsSchema.parse(args);
-    const result = await client.listCredentials();
-    let credentials: CredentialWithUsage[] = result.data;
-    let usageScanError: string | undefined;
+    const { includeUsage, cursor, limit } = listCredentialsSchema.parse(args);
+
     if (includeUsage) {
+      // Full audit: scan ALL credential pages so usage reporting is complete.
+      // Cursor/limit paging does not apply here — return every credential at once.
+      const allCredentials = await client.listAllCredentials();
+      // Strip sensitive data field — defense in depth, consistent with the get path.
+      let credentials: CredentialWithUsage[] = allCredentials.map(stripCredentialData);
+      let usageScanError: string | undefined;
       try {
         const usageMap = await buildCredentialUsageMap(client);
-        credentials = result.data.map((cred) => {
+        credentials = credentials.map((cred) => {
           const usedIn = (cred.id ? usageMap.get(cred.id) : undefined) ?? [];
           return { ...cred, usedIn, usageCount: usedIn.length };
         });
       } catch (scanError) {
-        // Degrade gracefully: still return the base credential list rather than
+        // Degrade gracefully: still return the full credential list rather than
         // failing the whole call when only the workflow scan failed.
         usageScanError = scanError instanceof Error ? scanError.message : String(scanError);
       }
+      return {
+        success: true,
+        data: {
+          credentials,
+          count: credentials.length,
+          ...(usageScanError ? { usageScanError } : {}),
+        },
+      };
     }
+
+    // Standard single-page cursor paging (mirrors n8n_list_workflows).
+    const result = await client.listCredentials({ cursor, limit });
+    const credentials = result.data.map(stripCredentialData);
     return {
       success: true,
       data: {
         credentials,
         count: credentials.length,
         nextCursor: result.nextCursor || undefined,
-        ...(usageScanError ? { usageScanError } : {}),
       },
     };
   } catch (error) {
+    if (isCredentialReadUnsupported(error)) {
+      return credentialReadUnsupportedResponse(error);
+    }
     return handleCrudError(error);
   }
 }
@@ -3253,15 +3406,15 @@ export async function handleGetCredential(args: unknown, context?: InstanceConte
     try {
       credential = await client.getCredential(id);
     } catch (getError: unknown) {
-      // GET /credentials/:id is not in the n8n public API — fall back to list + filter
-      const status = (getError as { statusCode?: number }).statusCode;
-      const msg = (getError as Error).message ?? '';
-      const isUnsupported = status === 405 || status === 403 || msg.includes('not allowed');
-      if (!isUnsupported) {
+      // GET /credentials/:id is not always in the n8n public API — fall back to list + filter
+      if (!isCredentialReadUnsupported(getError)) {
         throw getError;
       }
-      const list = await client.listCredentials();
-      credential = list.data.find((c) => c.id === id);
+      // Paginate through ALL credentials — the target id may live beyond page 1.
+      // If the list endpoint is rejected too, the instance supports no credential
+      // reads at all; the outer catch turns that into the NOT_SUPPORTED response.
+      const all = await client.listAllCredentials();
+      credential = all.find((c) => c.id === id);
       if (!credential) {
         return { success: false, error: `Credential ${id} not found` };
       }
@@ -3284,6 +3437,9 @@ export async function handleGetCredential(args: unknown, context?: InstanceConte
       data: usageScanError ? { ...enriched, usageScanError } : enriched,
     };
   } catch (error) {
+    if (isCredentialReadUnsupported(error)) {
+      return credentialReadUnsupportedResponse(error);
+    }
     return handleCrudError(error);
   }
 }

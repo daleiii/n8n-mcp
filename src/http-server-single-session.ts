@@ -604,11 +604,21 @@ export class SingleSessionHTTPServer {
 
           const isMultiTenantEnabled = process.env.ENABLE_MULTI_TENANT === 'true';
           const sessionStrategy = process.env.MULTI_TENANT_SESSION_STRATEGY || 'instance';
+          // Opt-in: let multiple MCP clients (e.g. an automation agent + an IDE +
+          // a web client) hold concurrent sessions for the SAME instance. The
+          // eager cleanup below assumes one session per instance and evicts the
+          // rest on every initialize — with several concurrent clients that means
+          // each one's initialize destroys the others' live sessions, surfacing as
+          // "Session not found or expired" drops. When enabled, sessions are
+          // reclaimed only by their natural lifecycle (transport close, idle
+          // timeout, MAX_SESSIONS cap) instead of by this eager pass.
+          const allowConcurrentSessions = process.env.MULTI_TENANT_ALLOW_CONCURRENT_SESSIONS === 'true';
 
           // EAGER CLEANUP: Remove existing sessions for the same instance only
-          // when instance-scoped sessions are requested. Shared strategy allows
-          // multiple MCP clients to use the same tenant/instance concurrently.
-          if (isMultiTenantEnabled && sessionStrategy === 'instance' && instanceContext?.instanceId) {
+          // when instance-scoped sessions are requested. Shared strategy, and the
+          // concurrent-sessions opt-in, both allow multiple MCP clients to use the
+          // same tenant/instance concurrently.
+          if (isMultiTenantEnabled && sessionStrategy === 'instance' && !allowConcurrentSessions && instanceContext?.instanceId) {
             const sessionsToRemove: string[] = [];
             for (const [existingSessionId, context] of Object.entries(this.sessionContexts)) {
               if (context?.instanceId === instanceContext.instanceId) {
@@ -1335,13 +1345,13 @@ export class SingleSessionHTTPServer {
         const hasUrl = headers['x-n8n-url'];
         const hasKey = headers['x-n8n-key'];
 
-        // SECURITY (GHSA-jxx9-px88-pj69): in multi-tenant mode, both headers
-        // must be present. Falling through with no context would silently use
-        // the operator's process-level N8N_API_KEY for the tenant's request.
-        if (process.env.ENABLE_MULTI_TENANT === 'true' && !hasUrl && !hasKey) {
+        // SECURITY (GHSA-jxx9-px88-pj69, GHSA-2cf7-hpwf-47h9): in multi-tenant
+        // mode both tenant headers are required; an incomplete context is
+        // rejected.
+        if (process.env.ENABLE_MULTI_TENANT === 'true' && (!hasUrl || !hasKey)) {
           logger.warn('Multi-tenant request missing tenant headers', {
-            hasUrl: false,
-            hasKey: false
+            hasUrl: !!hasUrl,
+            hasKey: !!hasKey
           });
           res.status(400).json({
             jsonrpc: '2.0',
@@ -1664,8 +1674,10 @@ export class SingleSessionHTTPServer {
    * point the transport and server will be initialized normally.
    *
    * @security Restored contexts are validated synchronously via
-   * validateInstanceContext. Embedders are responsible for not persisting
-   * hostnames they do not trust. See GHSA-4ggg-h7ph-26qr.
+   * validateInstanceContext, and must additionally carry BOTH n8nApiUrl and
+   * n8nApiKey — partial tenant contexts are rejected (GHSA-2cf7-hpwf-47h9
+   * hardening, #844). Embedders are responsible for not persisting hostnames
+   * they do not trust. See GHSA-4ggg-h7ph-26qr.
    *
    * @param sessions - Array of session state objects from exportSessionState()
    * @returns Number of sessions successfully restored
@@ -1734,6 +1746,25 @@ export class SingleSessionHTTPServer {
           const reason = validation.errors?.join(', ') || 'invalid context';
           logger.warn(
             `Skipping session ${sessionState.sessionId} - invalid context: ${reason}`
+          );
+          logSecurityEvent('session_restore_failed', {
+            sessionId: sessionState.sessionId,
+            reason
+          });
+          continue;
+        }
+
+        // SECURITY (GHSA-2cf7-hpwf-47h9 hardening, #844): require BOTH tenant
+        // credentials, mirroring the export-side guard. validateInstanceContext
+        // checks each field only when it is !== undefined, so a partial context
+        // carrying only one of n8nApiUrl/n8nApiKey passes validation and would
+        // restore as a partial tenant identity. The earlier no-context check
+        // above already skips sessions that carry no context at all, so this
+        // guard only applies to sessions whose context is present but incomplete.
+        if (!sessionState.context.n8nApiUrl || !sessionState.context.n8nApiKey) {
+          const reason = 'restored context missing required tenant credentials (both n8nApiUrl and n8nApiKey are required)';
+          logger.warn(
+            `Skipping session ${sessionState.sessionId} - ${reason}`
           );
           logSecurityEvent('session_restore_failed', {
             sessionId: sessionState.sessionId,

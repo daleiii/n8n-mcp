@@ -317,8 +317,10 @@ describe('NodeSpecificValidators', () => {
 
         NodeSpecificValidators.validateGoogleSheets(context);
 
-        // NOTE: sheetId validation was removed because it's provided by credentials, not configuration
-        // The actual error is missing range, which is checked first
+        // sheetId is provided by credentials, not configuration — so it must NOT be flagged
+        const sheetIdErrors = context.errors.filter(e => e.property === 'sheetId');
+        expect(sheetIdErrors).toHaveLength(0);
+        // The actual error is the missing range, which is checked first
         expect(context.errors).toContainEqual({
           type: 'missing_required',
           property: 'range',
@@ -388,7 +390,7 @@ describe('NodeSpecificValidators', () => {
 
       it('should require range for read', () => {
         NodeSpecificValidators.validateGoogleSheets(context);
-        
+
         expect(context.errors).toContainEqual({
           type: 'missing_required',
           property: 'range',
@@ -397,11 +399,24 @@ describe('NodeSpecificValidators', () => {
         });
       });
 
+      it('should still require range for read even when a columns object is present (read has no columns resourceMapper)', () => {
+        context.config.columns = {
+          mappingMode: 'defineBelow',
+          value: { Email: '={{ $json.email }}' },
+          matchingColumns: ['Email']
+        };
+
+        NodeSpecificValidators.validateGoogleSheets(context);
+
+        const rangeErrors = context.errors.filter(e => e.property === 'range');
+        expect(rangeErrors).toHaveLength(1);
+      });
+
       it('should suggest data structure option', () => {
         context.config.range = 'Sheet1!A:B';
-        
+
         NodeSpecificValidators.validateGoogleSheets(context);
-        
+
         expect(context.suggestions).toContain('Consider setting options.dataStructure to "object" for easier data manipulation');
       });
     });
@@ -414,37 +429,55 @@ describe('NodeSpecificValidators', () => {
         };
       });
 
-      it('should require range for update', () => {
+      it('should require range or columns for update', () => {
         NodeSpecificValidators.validateGoogleSheets(context);
-        
+
         expect(context.errors).toContainEqual({
           type: 'missing_required',
           property: 'range',
-          message: 'Range is required for update operation',
-          fix: 'Specify the exact range to update like "Sheet1!A1:B10"'
+          message: 'Range or columns mapping is required for update operation',
+          fix: 'Specify range like "Sheet1!A1:B10" OR use columns with mappingMode (e.g. defineBelow)'
         });
       });
 
-      it('should require values for update', () => {
+      it('should require values or columns for update', () => {
         context.config.range = 'Sheet1!A1:B10';
-        
+
         NodeSpecificValidators.validateGoogleSheets(context);
-        
+
         expect(context.errors).toContainEqual({
           type: 'missing_required',
           property: 'values',
-          message: 'Values are required for update operation',
-          fix: 'Provide the data to write to the spreadsheet'
+          message: 'Values or columns mapping is required for update operation',
+          fix: 'Provide data via values/rawData OR use columns.value with defineBelow mapping'
         });
       });
 
       it('should accept rawData as alternative to values', () => {
         context.config.range = 'Sheet1!A1:B10';
         context.config.rawData = [[1, 2], [3, 4]];
-        
+
         NodeSpecificValidators.validateGoogleSheets(context);
-        
+
         const valuesErrors = context.errors.filter(e => e.property === 'values');
+        expect(valuesErrors).toHaveLength(0);
+      });
+
+      it('should accept columns resourceMapper as alternative to range + values (v4+ defineBelow)', () => {
+        context.config.columns = {
+          mappingMode: 'defineBelow',
+          value: {
+            Email: '={{ $json.email }}',
+            Status: 'active'
+          },
+          matchingColumns: ['Email']
+        };
+
+        NodeSpecificValidators.validateGoogleSheets(context);
+
+        const rangeErrors = context.errors.filter(e => e.property === 'range');
+        const valuesErrors = context.errors.filter(e => e.property === 'values');
+        expect(rangeErrors).toHaveLength(0);
         expect(valuesErrors).toHaveLength(0);
       });
     });
@@ -1948,10 +1981,245 @@ return [{"json": {"result": result}}]
         expect(primitiveErrors).toHaveLength(0);
       });
 
+      it('should not error on primitive-looking returns in comments or strings', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: [
+            'const quoted = "not code: return \\"bad\\"";',
+            'const templated = `not code: return false`;',
+            '// return "bad";',
+            '/* return null; */',
+            'return [{json: {quoted, templated}}];',
+          ].join('\n')
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should not error on primitive helper returns inside nested blocks', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: [
+            'const normalize = (value) => {',
+            '  /* helper can return primitives */',
+            '  if (!value) { return ""; }',
+            '  return value;',
+            '};',
+            'return [{json: {value: normalize("ok")}}];',
+          ].join('\n')
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should not error on primitive return inside object-method shorthand', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'const o = { foo() { return 1; } };\nreturn [{json: o}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should not error on primitive return inside class methods', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'class A { m() { return false; } }\nreturn [{json: {}}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should not error on primitive return inside generator functions', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'function* gen() { return 1; }\nreturn [{json: {}}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should not error when a helper uses a regex literal containing braces', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: "const clean = (s) => { s = s.replace(/[/{}]/g, ''); return false; };\nreturn [{json: {ok: clean('x')}}];"
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should not error on a helper whose params contain nested parentheses', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'function normalize(item = $input.first()) { return null; }\nreturn [{json: {v: normalize()}}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should not error on an arrow helper with a function-call default param', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'const pick = (x = Math.max(1, 2)) => { return false; };\nreturn [{json: {v: pick()}}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should flag a primitive return inside a for-await block (not treat it as a function body)', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'for await (const item of source) { return "bad"; }'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        expect(context.errors).toContainEqual(
+          expect.objectContaining({ message: 'Cannot return primitive values directly' })
+        );
+      });
+
+      it('should not flag a valid for-await loop with a top-level array return', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'const results = [];\nfor await (const x of items) { results.push(x); }\nreturn [{json: {results}}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should report missing return when the only return is in a comment or string', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: '// return "bad"\nconst x = 1;'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        expect(context.errors).toContainEqual(
+          expect.objectContaining({ message: 'Code must return data for the next node' })
+        );
+      });
+
+      it('should still error on a real primitive return when a regex literal is present', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: "const m = 'a'.match(/b/);\nreturn 7;"
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        expect(context.errors).toContainEqual(
+          expect.objectContaining({ message: 'Cannot return primitive values directly' })
+        );
+      });
+
+      it('should not flag an identifier that merely starts with a primitive keyword', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'function f(x){ return x; }\nconst trueItems = [{json: {}}];\nreturn trueItems;'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should treat division after a string literal as division, not a regex', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'const ratio = "10" / 2;\nreturn [{json: {ratio}}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const missing = context.errors.filter(e => e.message === 'Code must return data for the next node');
+        expect(missing).toHaveLength(0);
+      });
+
+      it('should recognize a helper body when a block comment sits before its brace', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'function normalize() /* note */ { return null; }\nreturn [{json: {v: normalize()}}];'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        const primitiveErrors = context.errors.filter(e => e.message === 'Cannot return primitive values directly');
+        expect(primitiveErrors).toHaveLength(0);
+      });
+
+      it('should still error on primitive top-level return when helper functions exist', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'const isValid = (item) => { return false; };\nconst items = $input.all();\nif (!items.length) return "empty";\nreturn items.filter(isValid).map(i => ({json: i.json}));'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        expect(context.errors).toContainEqual(expect.objectContaining({
+          message: 'Cannot return primitive values directly'
+        }));
+      });
+
+      it('should still error on primitive try-block return when helper functions exist', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: 'function normalize(item) { return null; }\ntry {\n  const items = $input.all();\n  return "bad";\n} catch (error) {\n  return [{json: {error: error.message}}];\n}'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        expect(context.errors).toContainEqual(expect.objectContaining({
+          message: 'Cannot return primitive values directly'
+        }));
+      });
+
       it('should still error on primitive return without helper functions', () => {
         context.config = {
           language: 'javaScript',
           jsCode: 'return "success";'
+        };
+
+        NodeSpecificValidators.validateCode(context);
+
+        expect(context.errors).toContainEqual(expect.objectContaining({
+          message: 'Cannot return primitive values directly'
+        }));
+      });
+
+      it('should still check primitive returns in very large code blocks', () => {
+        context.config = {
+          language: 'javaScript',
+          jsCode: `${'const padding = 1;\n'.repeat(12000)}return "too large";`
         };
 
         NodeSpecificValidators.validateCode(context);

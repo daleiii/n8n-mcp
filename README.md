@@ -5,11 +5,11 @@
 [![npm version](https://img.shields.io/npm/v/n8n-mcp.svg)](https://www.npmjs.com/package/n8n-mcp)
 [![codecov](https://codecov.io/gh/czlonkowski/n8n-mcp/graph/badge.svg?token=YOUR_TOKEN)](https://codecov.io/gh/czlonkowski/n8n-mcp)
 [![Tests](https://img.shields.io/badge/tests-5418%20passing-brightgreen.svg)](https://github.com/czlonkowski/n8n-mcp/actions)
-[![n8n version](https://img.shields.io/badge/n8n-2.21.7-orange.svg)](https://github.com/n8n-io/n8n)
+[![n8n version](https://img.shields.io/badge/n8n-2.26.5-orange.svg)](https://github.com/n8n-io/n8n)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io%2Fczlonkowski%2Fn8n--mcp-green.svg)](https://github.com/czlonkowski/n8n-mcp/pkgs/container/n8n-mcp)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/n8n-mcp?referralCode=n8n-mcp)
 
-A Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to n8n node documentation, properties, and operations. Deploy in minutes to give Claude and other AI assistants deep knowledge about n8n's 1,851 workflow automation nodes (822 core + 1,029 community).
+A Model Context Protocol (MCP) server that provides AI assistants with comprehensive access to n8n node documentation, properties, and operations. Deploy in minutes to give Claude and other AI assistants deep knowledge about n8n's 1,845 workflow automation nodes (816 core + 1,029 community).
 
 > **Fork note:** This is a fork of [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp) with added support for custom n8n nodes. See [Fork Enhancements](#fork-enhancements) below.
 
@@ -52,7 +52,7 @@ npm run build && npm test
 
 n8n-MCP serves as a bridge between n8n's workflow automation platform and AI models, enabling them to understand and work with n8n nodes effectively. It provides structured access to:
 
-- **1,851 n8n nodes** - 822 core nodes + 1,029 community nodes (911 verified)
+- **1,845 n8n nodes** - 816 core nodes + 1,029 community nodes (911 verified)
 - **Node properties** - 99% coverage with detailed schemas
 - **Node operations** - 63.6% coverage of available actions
 - **Documentation** - 87% coverage from official n8n docs (including AI nodes)
@@ -434,6 +434,22 @@ These tools require `N8N_API_URL` and `N8N_API_KEY` in your configuration.
 
 ### Custom Node Tools (Fork Addition)
 - **`n8n_refresh_custom_nodes`** - Hot-reload custom nodes from `CUSTOM_NODE_PATHS` without restarting the server
+
+### Read-Only Deployment
+
+For governance-sensitive environments, use both env vars together. Fully disable purely write/destructive tools:
+
+```bash
+DISABLED_TOOLS=n8n_create_workflow,n8n_update_full_workflow,n8n_update_partial_workflow,n8n_delete_workflow,n8n_autofix_workflow,n8n_deploy_template,n8n_test_workflow,n8n_generate_workflow,n8n_manage_credentials,n8n_manage_datatable
+```
+
+For tools that bundle read and write operations under one name, block only the destructive operations while keeping `list` and `get`:
+
+```bash
+DISABLED_TOOL_OPERATIONS=n8n_workflow_versions:delete,rollback,prune;n8n_executions:delete
+```
+
+Combine with a read-only n8n API key (Settings → API in your n8n instance) for defence in depth. See [Read-Only Deployment Recipe](./docs/HTTP_DEPLOYMENT.md#read-only-deployment-recipe) for the full setup guide.
 
 ## Documentation
 

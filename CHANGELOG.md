@@ -7,6 +7,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.60.0] - 2026-06-24
+
+### Added
+
+- **Per-operation tool filtering via `DISABLED_TOOL_OPERATIONS`** (#714). A finer-grained companion to `DISABLED_TOOLS`: instead of removing an entire tool, operators can now disable individual operations within a tool — for example `DISABLED_TOOL_OPERATIONS=n8n_executions:delete` keeps `n8n_executions` available for read/list while blocking deletes — making it practical to stand up read-only or least-privilege deployments. Operation names are normalised to lowercase at parse time and at both enforcement points (the request guard and the executor's defense-in-depth check), so a client sending `action:"DELETE"` cannot slip past a lowercase rule. When every operation of a tool is disabled, the server warns the operator to use `DISABLED_TOOLS` instead, and the tool's destructive-operation annotations are recomputed so the advertised hints stay accurate. Thanks to @mahmoudnaif for the feature (#719).
+
+### Fixed
+
+- **Diff engine now removes a property when a patch sets it to `undefined`** (#292). `setNestedProperty` in `WorkflowDiffEngine` only treated `null` as a deletion marker, but `workflow-auto-fixer.ts` already removes properties with `{onError: undefined}` (carrying a literal `// This will remove the property` comment). The engine was assigning `undefined` to the key rather than deleting it, so `hasOwnProperty(key)` stayed true and the "removed" property still reached n8n. `undefined` is now honored as a removal marker alongside `null`. Thanks to @justadityaraj (Aditya Raj Singh) for the fix (#794).
+- **Version-summary cache TTL was 1000× too long** (#804). The node version-summary cache passed its TTL to `SimpleCache.set(key, data, ttlSeconds)` in milliseconds (`86400000`), but the API treats the third argument as seconds and multiplies by 1000 internally — so the entry was scheduled to live ~1,000 days instead of the intended 24 hours, and stale version summaries would never expire within a normal process lifetime. The TTL is now passed in seconds (`86400`). Thanks to @linda-ai-bot for the fix.
+- **Google Sheets `update` validator accepts the `columns` resourceMapper** (#730). `validateGoogleSheetsUpdate` raised false-positive `missing_required` errors (for both `range` and `values`) on valid Google Sheets v4+ configurations that map data with the `columns` resourceMapper (`mappingMode: "defineBelow"` / `"autoMapInputData"`) instead of the legacy `range` + `values` fields; `update` now treats a real `columns` mapping as satisfying both requirements. The `append` validator already accepted `columns` and was only tightened so an empty `columns: {}` no longer passes, and `read` is unchanged — it has no `columns` parameter and still requires `range`. Thanks to @infobewaize for the fix.
+- **Code node return validator is no longer fooled by helper functions** (#795). The earlier helper-function fix suppressed the "Code node must return data" check whenever *any* helper function was present, so a snippet whose only primitive `return` lived inside a nested helper — with no real top-level return — could slip through. The scanner now strips nested function/method bodies before looking for a top-level return, so primitive returns inside helpers, methods, generators, regex literals, comments, strings, and `for await` blocks are no longer mistaken for the node's actual return value; the backward function-head scan is also bounded to avoid quadratic blow-up on large source. Thanks to @AjTheSpidey (Aadi Jai Gupta) for the fix.
+
+### Changed
+
+- **Hardened the Dependabot configuration** (#874). The n8n packages (`n8n`, `n8n-core`, `n8n-workflow`, `n8n-nodes-base`, `@n8n/*`) are now excluded from Dependabot, because they are updated via `npm run update:n8n` — which also rebuilds `data/nodes.db` while preserving community nodes — so a plain Dependabot bump would ship a stale node catalog. A dedicated `/ui-apps` npm entry was added (it has its own lockfile and is not a root workspace, so Dependabot could not otherwise see it), and `rebase-strategy: auto` was set across all ecosystems.
+- **Bumped dev/build and CI tooling.** `ui-apps` build tooling — `vite` 6 → 8, `typescript` 5 → 6, `@vitejs/plugin-react` 4 → 6 (#876, #877, #878) — and the GitHub Actions used by CI: `docker/login-action` 3 → 4, `actions/upload-artifact` 4 → 7, `actions/download-artifact` 4 → 8, `actions/checkout` 4 → 7, `actions/setup-node` 4 → 6 (#869–#873). The `ui-apps` toolchain is dev-only: it produces the static single-file HTML bundles in `ui-apps/dist/**` at build time and none of it ships in the published runtime. The combined `ui-apps` upgrade was verified end-to-end (clean install, all five UI apps build); Vite 8 requires Node `^20.19 || >=22.12`, which the release build (Node 20.x) satisfies.
+
+### Documentation
+
+- **Documented npm cache contention for multi-client `npx` setups** (#866). Added guidance to `docs/SELF_HOSTING.md` for running several `npx n8n-mcp` clients on one machine: give each client a unique `npm_config_cache` to avoid concurrent-extraction races, and keep `DISABLE_CONSOLE_OUTPUT` set for stdio clients.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.59.4] - 2026-06-23
+
+### Fixed
+
+- **Server no longer crashes on startup with `ERR_REQUIRE_ESM`** (#864). v2.59.1's `uuid` 10 → 14 bump (#850) moved the dependency to an ESM-only build (`"type": "module"`, no `require` export condition), but the shipped artifact is compiled to CommonJS and calls `require('uuid')`. On the supported minimum Node (`>=18`) — and any Node 20.x before 20.19 or 22.x before 22.12, including the reporter's 22.11 — Node's CommonJS loader throws `ERR_REQUIRE_ESM` at module load, before any config is read, so every MCP client (Claude Code, Cursor, etc.) just saw `MCP error -32000: Connection closed`. It slipped through release verification because `tsc` only type-checks, the Vitest suite runs under an ESM transform pipeline, and CI/Docker/local dev all ran Node ≥ 20.19/22.12 where `require()` of an ESM module is silently tolerated. `uuid` is now pinned to `^11.1.1`, which ships a CommonJS build (a `node.require` export condition) and still clears the original advisory (GHSA-w5hq-g745-h8pq / CVE-2026-41907 does not affect v11), so the security fix from #850 is preserved with no source changes — `v4`/`v5` named exports are API-identical across v10/v11/v14. Reported by @anpe-efficy (André Pereira).
+- **Added a CommonJS runtime smoke test** (`npm run test:cjs-runtime` and a dedicated `cjs-runtime` CI job) that loads the compiled `dist/` under the strictest CommonJS loader the running Node supports. On Node ≥ 20.19/22.12 it forces `require()`-of-ESM off via `--no-experimental-require-module` so the mismatch can't be masked; on older Node (down to the `>=18` floor) that strict behavior is already the default and the flag — which doesn't exist there — is omitted. Either way a CJS/ESM mismatch in any shipped dependency fails CI regardless of the runner's Node version, closing the gap that let #864 reach three releases.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.59.3] - 2026-06-21
+
+### Fixed
+
+- **IF node and AI Agent example/template configs now validate against n8n** (#374). The static example and task-template generators emitted configs that n8n rejects. IF (`nodes-base.if`) examples were missing the `conditions.options` block (`version`/`leftValue`/`caseSensitive`/`typeValidation`), the filter `combinator`, and per-condition `id`s — so the generated node rendered empty and failed the validators. The AI Agent task templates used `nodes-langchain.agent` (missing the `@n8n/` package prefix) with a flat `text`/`outputType`/`systemMessage` shape instead of the current `promptType` + `options.systemMessage` structure. Both are corrected to the shapes the bundled node schema actually expects, and a regression test now runs the generated configs through `EnhancedConfigValidator` (the validator users hit) so the shapes cannot silently drift again. Reported by @FelipeLuz01.
+- **Windows: the MCP server no longer crashes on graceful shutdown** (#383, #385). Calling `process.stdin.destroy()` during shutdown triggered a fatal libuv assertion (`!(handle->flags & UV_HANDLE_CLOSING)`, `src/win/async.c:76`) on Windows, crashing the server on exit/disconnect — including via the published `npx n8n-mcp` stdio bin, which the earlier proposed fix missed. stdin teardown is now platform-aware (always `pause()`, only `destroy()` off `win32`) via a shared `tearDownStdin()` helper applied to both stdio entrypoints, with an explicit `win32` exit path so shutdown can't hang. Reported by @libragik.
+
+### Security
+
+- **Session restore now requires a complete tenant context in multi-tenant mode** (#844). Defense-in-depth follow-up to GHSA-2cf7-hpwf-47h9. `restoreSessionState()` validated a restored `InstanceContext` only via `validateInstanceContext`, which checks each field only when it is present, so a persisted context carrying just one of `n8nApiUrl`/`n8nApiKey` could be restored as a partial tenant identity — an asymmetry with the export side, which already refuses to persist a partial context. A presence guard mirroring the export-side check now rejects partial contexts on restore and emits a `session_restore_failed` security event; sessions with no context at all (single-tenant/stdio) are unaffected.
+
+### Documentation
+
+- **Railway deployment guide gains an upfront `AUTH_TOKEN` callout** (#152). Added a "Before You Deploy" section near the top of `docs/RAILWAY_DEPLOYMENT.md` covering both deploy paths — the one-click template (which pre-sets a placeholder `AUTH_TOKEN` you must replace) and a self-hosted repo/Dockerfile deploy (where Railway does not auto-create the variable, so the server won't start until you add it). Reported by @gthay.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.59.2] - 2026-06-19
+
+### Added
+
+- **`MULTI_TENANT_ALLOW_CONCURRENT_SESSIONS` env flag** (multi-tenant `instance` strategy). By default the instance strategy assumes one MCP session per instance and, on every `initialize`, eagerly evicts all other live sessions for that same instance (`reason: instance_reconnect`). When several MCP clients target the same instance concurrently — e.g. an automation agent, an IDE, and a web client all authenticated as one tenant — each client's `initialize` destroys the others' active sessions, so their next tool call fast-fails with `-32000 "Session not found or expired"` and the client reports a dropped connection. Set `MULTI_TENANT_ALLOW_CONCURRENT_SESSIONS=true` to skip the eager eviction and let concurrent same-instance sessions coexist; sessions are then reclaimed only by their natural lifecycle (transport close, the `SESSION_TIMEOUT_MINUTES` idle sweep, and the `N8N_MCP_MAX_SESSIONS` cap). Default `false` preserves the previous one-session-per-instance behavior. Hosted multi-client deployments should enable it.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.59.1] - 2026-06-19
+
+### Security
+
+- **Bumped `uuid` 10 → 14** (`package.json` + `package.runtime.json`). This is the only Dependabot advisory that actually reaches the published runtime artifact: a clean-room `npm install --production` from `package.runtime.json` (the manifest shipped to npm and installed in the Docker runtime stage) flagged exactly one vulnerable package — `uuid@10.0.0` (GHSA-w5hq-g745-h8pq / CVE-2026-41907, missing buffer bounds check in v3/v5/v6 when a caller-supplied output buffer is passed). The fix lands in a major release, so the `^10` pin could not auto-resolve. The server's own usage is unaffected (`v4` random IDs, and one `v5` call that passes no buffer), but the direct dependency is bumped so no vulnerable `uuid` reaches the shipped artifact. The `v4`/`v5` named exports are unchanged and verified under the CommonJS build. Note: the dev/build `package-lock.json` still contains older `uuid` copies (8.x/9.x/10.x) nested under the n8n packages (`@n8n/n8n-nodes-langchain`'s `@langchain/*`, plus snowflake-sdk, tedious, typeorm, etc.); these are build-time-only transitives that are absent from `package.runtime.json` and never installed at runtime, so they are intentionally not force-overridden (doing so would push those packages across multiple `uuid` breaking majors and risk the `npm run rebuild` build for code that does not ship). The GitHub `uuid` alert may therefore stay open until the n8n packages bump their own `uuid` upstream, which clears on the regular n8n update.
+- **Bumped dev/CI test tooling out of the vulnerable ranges**: `vitest` and `@vitest/*` 3.2.4 → 3.2.6 (clears the `vitest` advisory CVE-2026-47429, which only triggers via `vitest --ui` bound to a non-localhost interface — CI runs headless `vitest run`), which also refreshes the transitive `vite` to 7.3.5. These are dev-only dependencies and are never installed in the published package or the Docker runtime image.
+- **Bumped `ui-apps` build tooling**: `vite` ^6.0.0 → ^6.4.3, refreshing the transitive build chain to patched versions (`rollup` 4.62.0, `postcss` 8.5.15, `@babel/core` 7.29.7, `picomatch` 2.3.2/4.0.4). `ui-apps` produces static single-file HTML bundles at build time; none of this tooling ships in `ui-apps/dist/**`.
+
+The remaining open Dependabot advisories are not addressed here because they do not reach a shipped artifact: the bulk are transitive dependencies of the n8n packages (`n8n-core`, `n8n-nodes-base`, `n8n-workflow`, `@n8n/n8n-nodes-langchain`), which are build-time-only (used to generate `data/nodes.db`) and are absent from `package.runtime.json` — they clear on the regular n8n dependency updates. One low-severity `esbuild` advisory (Windows dev-server arbitrary file read, GHSA-g7r4-m6w7-qqqr) remains pinned by `vite`'s `^0.27.0` range and is unreachable in this project (esbuild is an internal Vite/Vitest transform, not an exposed dev server; CI is Linux).
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.59.0] - 2026-06-18
+
+### Added
+
+- **`n8n_get_workflow` gains `mode="filtered"`** for reading a single node (or a handful of nodes) without pulling the whole workflow. On large workflows with long Code-node source, `mode="full"`/`mode="active"` can return a payload big enough to be truncated client-side, leaving `jsCode`/`pythonCode` unreadable. The new mode takes a `nodeNames` array (matched against node names *or* node IDs) and returns only those nodes with their full config, plus light metadata (`nodeCount`, `returnedCount`, and a `notFound` list for any keys that matched nothing). Recommended flow: `mode="structure"` to discover node names, then `mode="filtered"` to pull the specific heavy node. Requested by @MiRaIOMeZaSu (#101).
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.58.0] - 2026-06-17
+
+### Changed
+
+- **Updated n8n to 2.26.5.** Bumped the four n8n packages this server loads at build time: `n8n-nodes-base` 2.23.0 → 2.26.2, `n8n-core` 2.23.1 → 2.26.2, `n8n-workflow` 2.23.0 → 2.26.2, and `@n8n/n8n-nodes-langchain` 2.23.0 → 2.26.2. The node database was rebuilt from the upgraded packages (816 core nodes, 1,137 AI-capable tool variants, 611 versioned nodes, 271 triggers) and the existing community-node corpus (1,029 nodes) was preserved with its READMEs and AI summaries intact. README badge and node-count copy updated to 1,845 total (816 core + 1,029 community).
+
+### Fixed
+
+- **`npm run update:n8n` no longer aborts at its validation step.** The post-rebuild validation invoked a `test-nodes` npm script pointing at `dist/scripts/test-nodes.js`, a file removed long ago, so every run ended with `Cannot find module .../test-nodes.js` and `❌ Update failed at validation step` even though the dependency bump and database rebuild had completed. The redundant `test-nodes` step (critical-node checks are already covered by `npm run validate`) and its dangling npm script have been removed.
+- **Published runtime manifest aligned with the build.** `package.runtime.json` (the manifest published to npm) pinned `@modelcontextprotocol/sdk` to `1.20.1` while the code is built and tested against `1.28.0`, and declared `node >=16.0.0` despite depending on `express@^5` (which requires Node ≥18). Both are now corrected (SDK `1.28.0`, engine `>=18.0.0`) so runtime-only installs match the tested build.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.57.4] - 2026-06-13
+
+### Security
+
+- Fix incorrect authorization for tenant-scoped workflow version backups in multi-tenant HTTP mode (GHSA-2cf7-hpwf-47h9). Reported by @DavidCarliez.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.57.3] - 2026-06-10
+
+### Fixed
+
+- **Workflow payloads mangled by HTTP MCP clients are repaired before validation (#814).** Some HTTP MCP clients (opencode confirmed) re-serialize nested tool arguments before they reach the server: arrays arrive as dense numeric-index records (`[x, y]` → `{"0": x, "1": y}`), numbers as strings (`typeVersion: "3"`), and objects as JSON strings (`parameters: "{}"`), which made `n8n_update_partial_workflow` effectively unusable and `n8n_create_workflow` intermittently fail on those clients. A new input normalizer restores the intended shapes inside the Zod schemas for workflow create/update, the partial-update diff request (the `operations` array itself plus `node`, `updates`, `patches`, `connections`, `settings`, and `position` fields), and `tags` on `n8n_list_workflows`. Guard rails: only canonical array-index keys trigger conversion (leading-zero keys like `"00"` are preserved as objects), number coercion accepts canonical decimal strings only (no `"0x10"`/`"1e3"`), normalization is depth-capped against pathological nesting, nested strings are never JSON-parsed (so `jsCode` payloads are safe), and node `credentials` — never an array in n8n — are exempt from dense conversion. Well-formed input from stdio clients passes through byte-identical. Likely also resolves #600, #611, and #492. Thanks to @cnYui for the fix (#836).
+- **`n8n_manage_credentials` now explains itself when an n8n instance cannot read credentials (#809).** Not every n8n deployment allows credential reads through its public API: older versions reject `GET /credentials` outright (405), and API-key scopes or instance settings can block it (403) — so the `list` action failed with a bare `GET method not allowed` and agents could not tell an unsupported action from a transient error. `list` and `get` now detect the rejection and return a clear `NOT_SUPPORTED` response explaining the likely causes (version vs. permissions), noting that `create`, `delete`, and `getSchema` generally still work (`update` too, where the API version supports it), pointing to the n8n UI for credential IDs, and carrying the underlying status code and message in `details` for diagnosis. The tool description documents the requirement. Deployments whose API does permit credential reads (used by `list` pagination and the `get` list-fallback since 2.57.1) are unaffected.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.57.2] - 2026-06-09
+
+### Fixed
+
+- **`n8n_update_partial_workflow` no longer fails with `request/body must NOT have additional properties` on n8n 2.x.** n8n's Public API write schema (`PUT /workflows/{id}`) declares `additionalProperties: false`, but its `GET` response echoes back server-managed fields that the write schema does not accept — including a top-level `availableInMCP` column on n8n 2.x, plus fields not even in the OpenAPI spec (`activeVersionId`, `versionCounter`, `nodeGroups`). The previous payload cleaner used a denylist, so any newly-echoed field leaked into the update request and was rejected. `cleanWorkflowForUpdate` now uses an allowlist (`name`, `nodes`, `connections`, `settings`), which is forward-compatible — fields n8n adds in future versions can no longer break updates. (`availableInMCP` *inside* `settings` remains a valid, writable property and is preserved.) Also resolves the `nodeGroups` reports (#831, #838).
+- **`n8n_update_full_workflow` no longer rejects updates that omit `name` or `settings`.** n8n's `PUT /workflows/{id}` is a full replace and requires `name`, `nodes`, `connections` and `settings` to all be present, but the tool lists them as optional. The handler now always fetches the current workflow and merges the caller's partial update over it, so omitted required fields are preserved from the existing workflow instead of failing with `request/body must have required property 'name'`.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.57.1] - 2026-06-03
+
+### Fixed
+
+- **`n8n_manage_credentials` can now paginate past 100 credentials (#816).** The `list` action accepts a `cursor` (and optional `limit`) and returns `nextCursor`, mirroring `n8n_list_workflows`, so callers can page through every credential on instances with more than 100. This also fixes two silent knock-on bugs: `get` by id no longer returns a false "not found" for credentials living beyond the first page (its list-fallback now scans all pages), and `includeUsage: true` on `list` now performs a complete all-pages scan instead of reporting only the first 100, so credential inventory/rotation audits no longer under-report.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.57.0] - 2026-06-02
+
+### Changed
+
+- **Updated n8n to 2.23.0.** Bumped the four n8n packages this server loads at build time: `n8n-nodes-base` 2.21.2 → 2.23.0, `n8n-core` 2.21.4 → 2.23.1, `n8n-workflow` 2.21.1 → 2.23.0, and `@n8n/n8n-nodes-langchain` 2.21.4 → 2.23.0. The node database was rebuilt from the upgraded packages (822 core nodes, 1,143 AI-capable tool variants, 606 versioned nodes, 271 triggers) and the existing community-node corpus (1,029 nodes) was preserved with its READMEs and AI summaries intact. README badge and node-count copy updated to 1,851 total (822 core + 1,029 community).
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
+## [2.56.1] - 2026-06-02
+
+### Fixed
+
+- **Workflow version backups are now scoped per n8n instance.** Each `workflow_versions` record is tagged with a derived, non-spoofable instance key (a hash of the instance's API URL and key), and every read, list, get, delete, rollback, and prune is filtered by it. In multi-tenant HTTP deployments this isolates version history per instance, so one tenant can no longer read or delete another tenant's backups; single-instance and stdio deployments are unaffected (one logical scope). A startup migration adds the `instance_id` column to existing databases (pre-existing, un-scoped backups are cleared during the migration) and an age-based retention sweep — configurable via `WORKFLOW_VERSION_RETENTION_DAYS` (default 30) — bounds on-disk growth alongside the existing per-workflow keep-10 pruning.
+
+### Changed
+
+- **Removed the global `truncate` mode from `n8n_workflow_versions`.** Per-workflow `delete`/`prune` plus the automatic retention sweep replace it.
+
+Conceived by Romuald Członkowski - https://www.aiadvisors.pl/en
+
 ## [2.56.0] - 2026-05-23
 
 ### Added
