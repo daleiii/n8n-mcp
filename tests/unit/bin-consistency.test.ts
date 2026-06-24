@@ -26,10 +26,11 @@ describe('bin entry consistency (Issue #693 / Issue #711)', () => {
     expect(pkg.bin).toEqual({ 'n8n-mcp': EXPECTED_BIN });
   });
 
+  // Note: upstream also checks '.github/workflows/release.yml' here, but this
+  // fork removed that workflow (we don't publish to npm via CI), so it's omitted.
   it.each([
     'scripts/publish-npm.sh',
     'scripts/publish-npm-quick.sh',
-    '.github/workflows/release.yml',
   ])('%s writes stdio-wrapper as the bin entry', (relPath) => {
     const content = fs.readFileSync(path.join(REPO_ROOT, relPath), 'utf-8');
     // Match the shared pattern: `pkg.bin = { 'n8n-mcp': './dist/mcp/<something>.js' }`
